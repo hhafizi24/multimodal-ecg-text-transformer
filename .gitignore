@@ -1,0 +1,53 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Data — never committed
+data/raw/
+data/processed/
+
+# Model artifacts — never committed
+models/
+
+# MLflow — lives on Drive during dev, never in repo
+mlruns/
+
+# Scratch notebooks — exploration only
+notebooks/
+*.ipynb
+
+# Results: figures and benchmark numbers ARE committed
+# (results/figures/ and results/benchmark.json are tracked)
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.local
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# MyPy
