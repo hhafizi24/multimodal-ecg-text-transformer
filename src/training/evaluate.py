@@ -1,0 +1,169 @@
+"""
+Evaluation utilities for validation and final test-set analysis.
+
+Provides per-epoch validation metrics, per-class F1 scores, classification
+reports, and confusion matrix export for stage-level comparisons.
+"""
+
+import json
+import logging
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+import torch
+import torch.nn as nn
+from sklearn.metrics import (
+    classification_report,
+    confusion_matrix,
+    f1_score,
+)
+from torch.utils.data import DataLoader
+
+log = logging.getLogger(__name__)
+
+LABEL_NAMES = ["NORM", "MI", "STTC", "CD", "HYP"]
+
+
+def evaluate(
+    model: nn.Module,
+    loader: DataLoader,
+    device: torch.device,
+    criterion: nn.Module | None = None,
+) -> dict:
+    """
+    Run inference over a DataLoader and return loss and F1 metrics.
+
+    Used both during training (val loop) and for final test set evaluation.
+    criterion is optional — pass None to skip loss computation.
+    """
+    model.eval()
+    all_preds, all_labels = [], []
+    total_loss = 0.0
+
+    with torch.no_grad():
+        for batch in loader:
+            signal         = batch["signal"].to(device)
+            input_ids      = batch["input_ids"].to(device)
+            attention_mask = batch["attention_mask"].to(device)
+            labels         = batch["label"].to(device)
+
+            logits = model(signal, input_ids, attention_mask)
+
+            if criterion is not None:
+                total_loss += criterion(logits, labels).item()
+
+            preds = logits.argmax(dim=-1)
+            all_preds.extend(preds.cpu().tolist())
+            all_labels.extend(labels.cpu().tolist())
+
+    macro_f1 = f1_score(all_labels, all_preds, average="macro", zero_division=0)
+    per_class = f1_score(all_labels, all_preds, average=None, zero_division=0)
+    per_class_f1 = {LABEL_NAMES[i]: float(per_class[i]) for i in range(len(LABEL_NAMES))}
+
+    metrics = {
+        "macro_f1":     float(macro_f1),
+        "per_class_f1": per_class_f1,
+        "loss":         total_loss / len(loader) if criterion is not None else None,
+    }
+    return metrics
+
+
+def evaluate_and_save(
+    model: nn.Module,
+    loader: DataLoader,
+    device: torch.device,
+    stage_name: str,
+    figures_dir: str,
+    results_dir: str,
+) -> dict:
+    """
+    Full evaluation for a single stage: computes metrics, saves confusion matrix
+    figure, and returns the metrics dict. Called once per stage during Phase 10.
+
+    Args:
+        model:       Trained model for this stage.
+        loader:      Test DataLoader.
+        device:      Inference device.
+        stage_name:  e.g. "stage_a_signal_only" — used in filenames and titles.
+        figures_dir: Where to write the confusion matrix PNG.
+        results_dir: Where to write per-stage metrics JSON.
+    """
+    metrics = evaluate(model, loader, device)
+
+    # Full sklearn report for the log
+    all_preds, all_labels = _collect_predictions(model, loader, device)
+    report = classification_report(
+        all_labels, all_preds, target_names=LABEL_NAMES, zero_division=0
+    )
+    log.info("Classification report — %s:\n%s", stage_name, report)
+
+    # Confusion matrix
+    cm = confusion_matrix(all_labels, all_preds)
+    _save_confusion_matrix(cm, stage_name, figures_dir)
+
+    # Per-stage metrics JSON
+    results_path = Path(results_dir) / f"{stage_name}_metrics.json"
+    results_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(results_path, "w") as f:
+        json.dump(metrics, f, indent=2)
+    log.info("Saved metrics → %s", results_path)
+
+    return metrics
+
+
+def _collect_predictions(
+    model: nn.Module,
+    loader: DataLoader,
+    device: torch.device,
+) -> tuple[list[int], list[int]]:
+    model.eval()
+    all_preds, all_labels = [], []
+    with torch.no_grad():
+        for batch in loader:
+            logits = model(
+                batch["signal"].to(device),
+                batch["input_ids"].to(device),
+                batch["attention_mask"].to(device),
+            )
+            all_preds.extend(logits.argmax(dim=-1).cpu().tolist())
+            all_labels.extend(batch["label"].tolist())
+    return all_preds, all_labels
+
+
+def _save_confusion_matrix(cm: np.ndarray, stage_name: str, figures_dir: str) -> None:
+    figures_dir = Path(figures_dir)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    # Row-normalize so the heatmap shows recall per class, not raw counts.
+    # Raw counts vary too much with class imbalance to be visually useful.
+    row_sums = cm.sum(axis=1, keepdims=True)
+    cm_norm = np.divide(
+        cm.astype(float),
+        row_sums,
+        out=np.zeros_like(cm, dtype=float),
+        where=row_sums != 0,
+    )   
+
+    fig, ax = plt.subplots(figsize=(7, 6))
+    sns.heatmap(
+        cm_norm,
+        annot=True,
+        fmt=".2f",
+        cmap="Blues",
+        xticklabels=LABEL_NAMES,
+        yticklabels=LABEL_NAMES,
+        ax=ax,
+        vmin=0.0,
+        vmax=1.0,
+    )
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("True")
+    ax.set_title(f"Confusion Matrix — {stage_name.replace('_', ' ').title()}")
+    plt.tight_layout()
+
+    out_path = figures_dir / f"confusion_matrix_{stage_name}.png"
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    log.info("Saved confusion matrix → %s", out_path)

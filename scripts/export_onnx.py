@@ -60,7 +60,7 @@ def export(cfg: ExportConfig, model_cfg: ModelConfig) -> None:
     log.info("Loading checkpoint from %s", cfg.checkpoint_path)
     full_model = MultimodalECGClassifier(model_cfg)
     state = torch.load(cfg.checkpoint_path, map_location="cpu", weights_only=True)
-    full_model.load_state_dict(state)
+    full_model.load_state_dict(state["model_state_dict"])
     full_model.eval()
 
     exportable = ExportableECGModel(full_model)
@@ -153,3 +153,4 @@ if __name__ == "__main__":
         quantized_onnx_path=args.quantized_onnx_path,
         opset_version=args.opset_version,
     )
+    export(export_cfg, ModelConfig(mode="fusion"))
