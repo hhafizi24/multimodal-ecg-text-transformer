@@ -19,7 +19,7 @@ data/raw/
 data/processed/
 
 # Model artifacts — never committed
-models/
+/models/
 
 # MLflow — lives on Drive during dev, never in repo
 mlruns/
@@ -51,3 +51,4 @@ Thumbs.db
 htmlcov/
 
 # MyPy
+.mypy_cache/
