@@ -42,7 +42,7 @@ def evaluate(
     all_preds, all_labels = [], []
     total_loss = 0.0
 
-    with torch.no_grad():
+    with torch.inference_mode(): 
         for batch in loader:
             signal         = batch["signal"].to(device)
             input_ids      = batch["input_ids"].to(device)
@@ -120,7 +120,7 @@ def _collect_predictions(
 ) -> tuple[list[int], list[int]]:
     model.eval()
     all_preds, all_labels = [], []
-    with torch.no_grad():
+    with torch.inference_mode():
         for batch in loader:
             logits = model(
                 batch["signal"].to(device),

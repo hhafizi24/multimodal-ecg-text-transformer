@@ -57,6 +57,7 @@ class SignalEncoder(nn.Module):
             dropout=cfg.transformer_dropout,
             activation="gelu",
             batch_first=True,
+            norm_first=True,
         )
         self.transformer = nn.TransformerEncoder(
             encoder_layer, num_layers=cfg.transformer_num_layers
@@ -75,7 +76,7 @@ class SignalEncoder(nn.Module):
         x = x.permute(0, 2, 1)          # [B, ~125, C]
         x = self.input_proj(x)           # [B, ~125, hidden_dim]
 
-        seq_len = x.size(1)
+        seq_len = x.size(1) 
         positions = torch.arange(seq_len, device=x.device)
         x = self.pos_drop(x + self.pos_embedding(positions))  # [B, ~125, hidden_dim]
 

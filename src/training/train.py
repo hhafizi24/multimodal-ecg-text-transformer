@@ -1,7 +1,7 @@
 """
 Training loop for all three model stages.
 
-Designed for Colab-driven experiments with configs instantiated directly as
+Designed for experiments with configs instantiated directly as
 Python objects. Handles MLflow logging, checkpointing, and learning-rate
 scheduling in one reusable training entry point.
 """
