@@ -8,6 +8,7 @@ load time using a tokenizer instance passed in at construction.
 from pathlib import Path
 
 import numpy as np
+import json
 import torch
 from torch.utils.data import DataLoader, Dataset
 
@@ -25,8 +26,8 @@ class ECGTextDataset(Dataset):
         self.signals = np.load(split_dir / "signals.npy")   # [N, 1000, 12]
         self.labels  = np.load(split_dir / "labels.npy")    # [N]
 
-        with open(split_dir / "reports.txt", encoding="utf-8") as f:
-            self.reports = f.read().splitlines()
+        with open(split_dir / "reports.json", encoding="utf-8") as f:
+            self.reports = json.load(f)
 
         assert len(self.signals) == len(self.labels) == len(self.reports), (
             "Mismatch between signals, labels, and reports — re-run preprocessing."
