@@ -78,6 +78,8 @@ def train(
     best_ckpt_path = checkpoint_dir / f"best_{train_cfg.experiment_name}.pt"
 
     best_val_f1 = -1.0
+    best_epoch = 0
+    epochs_without_improvement = 0
 
     mlflow.set_experiment(train_cfg.experiment_name)
     with mlflow.start_run():
@@ -90,6 +92,7 @@ def train(
             "scheduler":      train_cfg.scheduler,
             "use_class_weights": train_cfg.use_class_weights,
             "batch_size":     train_loader.batch_size,
+            "early_stopping_patience": train_cfg.early_stopping_patience,
         })
 
         for epoch in range(1, train_cfg.num_epochs + 1):
@@ -132,7 +135,6 @@ def train(
                     "val_macro_precision": val_metrics["macro_precision"],
                     "val_macro_recall": val_metrics["macro_recall"],
                     "val_macro_f1": val_metrics["macro_f1"],
-                    
                     **{f"val_f1_{k}": v for k, v in val_metrics["per_class_f1"].items()},
                     "lr": scheduler.get_last_lr()[0],
                 },
@@ -141,6 +143,9 @@ def train(
 
             if val_metrics["macro_f1"] > best_val_f1:
                 best_val_f1 = val_metrics["macro_f1"]
+                best_epoch = epoch
+                epochs_without_improvement = 0
+
                 torch.save(
                     {
                         "epoch":      epoch,
@@ -150,10 +155,29 @@ def train(
                     },
                     best_ckpt_path,
                 )
+
                 mlflow.log_metric("best_val_macro_f1", best_val_f1, step=epoch)
                 log.info("  ↳ New best checkpoint saved (val macro F1: %.4f)", best_val_f1)
 
+            else:
+                epochs_without_improvement += 1
+
+                if (
+                    train_cfg.early_stopping_patience is not None
+                    and epochs_without_improvement >= train_cfg.early_stopping_patience
+                ):
+                    log.info(
+                        "Early stopping triggered after %d epochs without improvement.",
+                        epochs_without_improvement,
+                    )
+                    break
+
+        mlflow.log_metric("best_epoch", best_epoch)            
         mlflow.log_artifact(str(best_ckpt_path))
-        log.info("Training complete. Best val macro F1: %.4f", best_val_f1)
+        log.info(
+                "Training complete. Best val macro F1: %.4f at epoch %d", 
+                 best_val_f1,
+                 best_epoch,
+        )
 
     return best_ckpt_path

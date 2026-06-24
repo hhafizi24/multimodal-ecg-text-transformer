@@ -42,6 +42,8 @@ class TrainingConfig:
     experiment_name: str = "ecg_multimodal"
     use_class_weights: bool = True
     class_weights_path: str = "data/processed/config_snapshot.json"
+    # Set to None to disable early stopping
+    early_stopping_patience: int | None = 5
 
 @dataclass
 class ExportConfig:
