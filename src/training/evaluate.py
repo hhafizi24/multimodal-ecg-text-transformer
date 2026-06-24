@@ -18,6 +18,9 @@ from sklearn.metrics import (
     classification_report,
     confusion_matrix,
     f1_score,
+    accuracy_score,
+    precision_score,
+    recall_score,
 )
 from torch.utils.data import DataLoader
 
@@ -59,14 +62,32 @@ def evaluate(
             all_labels.extend(labels.cpu().tolist())
 
     macro_f1 = f1_score(all_labels, all_preds, average="macro", zero_division=0)
+    accuracy = accuracy_score(all_labels, all_preds)
+    
+    macro_precision = precision_score(
+        all_labels,
+        all_preds,
+        average="macro",
+        zero_division=0,
+    )
+    macro_recall = recall_score(
+        all_labels,
+        all_preds,
+        average="macro",
+        zero_division=0,
+    )
+
     per_class = f1_score(all_labels, all_preds, average=None, zero_division=0)
     per_class_f1 = {LABEL_NAMES[i]: float(per_class[i]) for i in range(len(LABEL_NAMES))}
 
     metrics = {
-        "macro_f1":     float(macro_f1),
+        "accuracy": float(accuracy),
+        "macro_precision": float(macro_precision),
+        "macro_recall": float(macro_recall),
+        "macro_f1": float(macro_f1),
         "per_class_f1": per_class_f1,
-        "loss":         total_loss / len(loader) if criterion is not None else None,
-    }
+        "loss": total_loss / len(loader) if criterion is not None else None,
+        }
     return metrics
 
 

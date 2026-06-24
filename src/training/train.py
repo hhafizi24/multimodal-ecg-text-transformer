@@ -128,7 +128,11 @@ def train(
                 {
                     "train_loss":   train_loss,
                     "val_loss":     val_metrics["loss"],
+                    "val_accuracy": val_metrics["accuracy"],
+                    "val_macro_precision": val_metrics["macro_precision"],
+                    "val_macro_recall": val_metrics["macro_recall"],
                     "val_macro_f1": val_metrics["macro_f1"],
+                    
                     **{f"val_f1_{k}": v for k, v in val_metrics["per_class_f1"].items()},
                     "lr": scheduler.get_last_lr()[0],
                 },
