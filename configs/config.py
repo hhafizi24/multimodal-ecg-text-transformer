@@ -21,6 +21,7 @@ class ModelConfig:
     mode: Literal["signal_only", "text_only", "fusion"] = "fusion"
     cnn_channels: list[int] = field(default_factory=lambda: [32, 64, 128])
     cnn_kernel_size: int = 7
+    cnn_dropout: float = 0.0
     transformer_hidden_dim: int = 256
     transformer_num_heads: int = 8
     transformer_num_layers: int = 3
