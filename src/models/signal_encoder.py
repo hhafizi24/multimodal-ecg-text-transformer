@@ -41,6 +41,7 @@ class SignalEncoder(nn.Module):
             ]
             in_channels = out_ch
         self.cnn = nn.Sequential(*cnn_layers)
+        self.cnn_dropout = nn.Dropout(p=cfg.cnn_dropout)
 
         # Project CNN output channels to transformer hidden dim
         self.input_proj = nn.Linear(channels[-1], cfg.transformer_hidden_dim)
@@ -73,6 +74,7 @@ class SignalEncoder(nn.Module):
         # Conv1d expects [batch, channels, time]
         x = x.permute(0, 2, 1)          # [B, 12, 1000]
         x = self.cnn(x)                  # [B, C, ~125]
+        x = self.cnn_dropout(x)          
         x = x.permute(0, 2, 1)          # [B, ~125, C]
         x = self.input_proj(x)           # [B, ~125, hidden_dim]
 
