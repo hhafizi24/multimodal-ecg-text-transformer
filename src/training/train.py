@@ -84,15 +84,21 @@ def train(
     mlflow.set_experiment(train_cfg.experiment_name)
     with mlflow.start_run():
         # Log the full config so every run is reproducible from MLflow alone
+        aug = getattr(train_loader.dataset, "augmentation", None)
         mlflow.log_params({
-            "mode":           model.mode,
-            "learning_rate":  train_cfg.learning_rate,
-            "num_epochs":     train_cfg.num_epochs,
-            "weight_decay":   train_cfg.weight_decay,
-            "scheduler":      train_cfg.scheduler,
-            "use_class_weights": train_cfg.use_class_weights,
-            "batch_size":     train_loader.batch_size,
+            "mode":                    model.mode,
+            "learning_rate":           train_cfg.learning_rate,
+            "num_epochs":              train_cfg.num_epochs,
+            "weight_decay":            train_cfg.weight_decay,
+            "scheduler":               train_cfg.scheduler,
+            "use_class_weights":       train_cfg.use_class_weights,
+            "batch_size":              train_loader.batch_size,
             "early_stopping_patience": train_cfg.early_stopping_patience,
+            "augment_classes":         ",".join(map(str, sorted(aug.augment_classes))) if aug else "none",
+            "aug_noise_std":           aug.noise_std if aug else "none",
+            "aug_amplitude_range":     str(list(aug.amplitude_scale_range)) if aug else "none",
+            "aug_time_shift_max":      aug.time_shift_max if aug else "none",
+            "aug_p":                   aug.p if aug else "none",
         })
 
         for epoch in range(1, train_cfg.num_epochs + 1):
@@ -149,10 +155,17 @@ def train(
 
                 torch.save(
                     {
-                        "epoch":      epoch,
+                        "epoch": epoch,
                         "model_state_dict": model.state_dict(),
-                        "val_macro_f1":     best_val_f1,
-                        "train_cfg":        train_cfg.__dict__,
+                        "val_macro_f1": best_val_f1,
+                        "train_cfg": train_cfg.__dict__,
+                        "augmentation": {
+                            "augment_classes": sorted(aug.augment_classes),
+                            "noise_std": aug.noise_std,
+                            "amplitude_scale_range": list(aug.amplitude_scale_range),
+                            "time_shift_max": aug.time_shift_max,
+                            "p": aug.p,
+                        } if aug else None,
                     },
                     best_ckpt_path,
                 )
