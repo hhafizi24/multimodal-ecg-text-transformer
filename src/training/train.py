@@ -140,7 +140,8 @@ def train(
                 },
                 step=epoch,
             )
-
+            # Validation macro F1 improved. Save a new best checkpoint and
+            # reset the early stopping patience counter.
             if val_metrics["macro_f1"] > best_val_f1:
                 best_val_f1 = val_metrics["macro_f1"]
                 best_epoch = epoch
@@ -160,6 +161,8 @@ def train(
                 log.info("  ↳ New best checkpoint saved (val macro F1: %.4f)", best_val_f1)
 
             else:
+                # Validation macro F1 did not improve. Increment the patience
+                # counter and stop training once the configured patience is reached.
                 epochs_without_improvement += 1
 
                 if (
