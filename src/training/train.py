@@ -35,6 +35,8 @@ def train(
     val_loader: DataLoader,
     train_cfg,
     device: torch.device,
+    model_cfg=None,
+    run_notes: str | None = None,
 ) -> Path:
     """
     Run the full training loop for one stage.
@@ -48,6 +50,8 @@ def train(
         val_loader:   DataLoader for the validation split.
         train_cfg:    TrainingConfig instance.
         device:       torch.device to train on.
+        model_cfg:    ModelConfig instance.
+        run_notes:    Optional notes describing the experiment.
 
     Returns:
         Path to the best saved checkpoint.
@@ -71,6 +75,15 @@ def train(
     if train_cfg.use_class_weights:
         class_weights = load_class_weights(train_cfg.class_weights_path, device)
 
+    def _serialize_param(value):
+        if value is None:
+            return "none"
+        if isinstance(value, (list, tuple, set, dict)):
+            return str(value)
+        if isinstance(value, Path):
+            return str(value)
+        return value
+
     criterion = nn.CrossEntropyLoss(weight=class_weights)
 
     checkpoint_dir = Path(train_cfg.checkpoint_dir)
@@ -83,23 +96,28 @@ def train(
 
     mlflow.set_experiment(train_cfg.experiment_name)
     with mlflow.start_run():
-        # Log the full config so every run is reproducible from MLflow alone
+        # Log experiment settings so runs can be compared and reproduced from MLflow.
         aug = getattr(train_loader.dataset, "augmentation", None)
-        mlflow.log_params({
-            "mode":                    model.mode,
-            "learning_rate":           train_cfg.learning_rate,
-            "num_epochs":              train_cfg.num_epochs,
-            "weight_decay":            train_cfg.weight_decay,
-            "scheduler":               train_cfg.scheduler,
-            "use_class_weights":       train_cfg.use_class_weights,
-            "batch_size":              train_loader.batch_size,
-            "early_stopping_patience": train_cfg.early_stopping_patience,
-            "augment_classes":         ",".join(map(str, sorted(aug.augment_classes))) if aug else "none",
-            "aug_noise_std":           aug.noise_std if aug else "none",
-            "aug_amplitude_range":     str(list(aug.amplitude_scale_range)) if aug else "none",
-            "aug_time_shift_max":      aug.time_shift_max if aug else "none",
-            "aug_p":                   aug.p if aug else "none",
-        })
+
+        params = {
+            **(
+                {k: _serialize_param(v) for k, v in model_cfg.__dict__.items()}
+                if model_cfg is not None
+                else {"mode": getattr(model, "mode", "unknown")}
+            ),
+            **{k: _serialize_param(v) for k, v in train_cfg.__dict__.items()},
+            "batch_size": train_loader.batch_size,
+            "augment_classes": str(sorted(aug.augment_classes)) if aug else "none",
+            "aug_noise_std": aug.noise_std if aug else "none",
+            "aug_amplitude_range": str(list(aug.amplitude_scale_range)) if aug else "none",
+            "aug_time_shift_max": aug.time_shift_max if aug else "none",
+            "aug_p": aug.p if aug else "none",
+        }
+
+        mlflow.log_params(params)
+
+        if run_notes:
+            mlflow.log_text(run_notes, "run_notes.txt")
 
         for epoch in range(1, train_cfg.num_epochs + 1):
             model.train()
@@ -160,6 +178,7 @@ def train(
                         "model_state_dict": model.state_dict(),
                         "val_macro_f1": best_val_f1,
                         "train_cfg": train_cfg.__dict__,
+                        "model_cfg": model_cfg.__dict__ if model_cfg is not None else None,
                         "augmentation": {
                             "augment_classes": sorted(aug.augment_classes),
                             "noise_std": aug.noise_std,
