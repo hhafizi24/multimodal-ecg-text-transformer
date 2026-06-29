@@ -2,8 +2,9 @@
 Preprocessing pipeline for PTB-XL.
 
 Derives single-label diagnostic superclasses from scp_codes, assigns train/val/test
-splits using the dataset's strat_fold column, loads and normalizes waveforms, and
-saves processed splits to disk alongside normalization stats and a config snapshot.
+splits using the dataset's strat_fold column, optionally applies zero-phase bandpass filtering, 
+computes normalization statistics from the training split, normalizes all waveforms, and saves
+processed splits alongside normalization statistics and a preprocessing config snapshot.
 """
 
 import ast
@@ -15,6 +16,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import wfdb
+from scipy.signal import butter, sosfiltfilt
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -63,17 +65,27 @@ def derive_label(scp_codes_str: str, scp_lookup: pd.DataFrame, threshold: float 
     total_score = sum(scores.values())
     if total_score == 0:
         return None
-    
+
     dominant_fraction = scores[dominant] / total_score
 
     if dominant_fraction >= threshold and dominant in LABEL_MAP:
         return dominant
-    
+
     return None
 
 
-def load_waveform(filename_lr: str, raw_data_dir: str) -> np.ndarray | None:
-    """Load a 100 Hz waveform via wfdb. Returns float32 array [1000, 12] or None on error."""
+def load_waveform(
+    filename_lr: str,
+    raw_data_dir: str,
+    bandpass_sos: np.ndarray | None = None,
+) -> np.ndarray | None:
+    """
+    Load a 100 Hz waveform via wfdb and optionally apply bandpass filtering.
+
+    Returns a float32 array of shape [1000, 12], or None on error.
+    When provided, bandpass_sos is applied with sosfiltfilt to produce a
+    zero-phase filtered signal.
+    """
     path = os.path.join(raw_data_dir, filename_lr)
     try:
         signal, _ = wfdb.rdsamp(path)
@@ -82,7 +94,10 @@ def load_waveform(filename_lr: str, raw_data_dir: str) -> np.ndarray | None:
             log.warning("Unexpected waveform shape for %s: %s", filename_lr, signal.shape)
             return None
 
-        return signal.astype(np.float32)
+        signal = signal.astype(np.float32)
+        if bandpass_sos is not None:
+            signal = sosfiltfilt(bandpass_sos, signal, axis=0).astype(np.float32)
+        return signal
     except Exception as e:
         log.warning("Failed to load %s: %s", filename_lr, e)
         return None
@@ -102,6 +117,7 @@ def compute_norm_stats(signals: list[np.ndarray]) -> dict:
 
 
 def normalize(signal: np.ndarray, mean: list[float], std: list[float]) -> np.ndarray:
+    """Apply per-channel z-score normalization using precomputed training statistics."""
     mean_arr = np.array(mean, dtype=np.float32)
     std_arr  = np.array(std,  dtype=np.float32)
     # Avoid division by zero for flat channels
@@ -113,12 +129,41 @@ def run(
     raw_data_dir: str,
     processed_data_dir: str,
     likelihood_threshold: float = 0.5,
+    apply_bandpass: bool = True,
+    filter_low_hz: float = 0.5,
+    filter_high_hz: float = 40.0,
+    filter_order: int = 4,
+    sampling_rate: int = 100,
 ) -> None:
+    """
+    Execute the full preprocessing pipeline and write processed splits to disk.
+
+    Filtering and normalization are applied in that order — filter on raw signal,
+    normalize on filtered signal — so norm stats reflect the filtered distribution.
+    """
     raw_data_dir       = str(Path(raw_data_dir).resolve())
     processed_data_dir = Path(processed_data_dir).resolve()
     processed_data_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- Load metadata ---
+    bandpass_sos = None
+    if apply_bandpass:
+        bandpass_sos = butter(
+            N=filter_order,
+            Wn=[filter_low_hz, filter_high_hz],
+            btype="bandpass",
+            fs=sampling_rate,
+            output="sos",
+        )
+        log.info(
+            "Applying zero-phase bandpass filter: %.2f-%.2f Hz, order %d",
+            filter_low_hz,
+            filter_high_hz,
+            filter_order,
+        )
+    else:
+        log.info("Bandpass filtering disabled.")
+
+    # Load metadata
     log.info("Loading metadata...")
     df = pd.read_csv(
         os.path.join(raw_data_dir, "ptbxl_database.csv"),
@@ -126,7 +171,7 @@ def run(
     )
     scp_lookup = load_scp_lookup(os.path.join(raw_data_dir, "scp_statements.csv"))
 
-    # --- Derive labels ---
+    # Derive labels 
     log.info("Deriving diagnostic superclass labels...")
     df["label_str"] = df["scp_codes"].apply(
         lambda x: derive_label(x, scp_lookup, likelihood_threshold)
@@ -141,7 +186,7 @@ def run(
     label_counts = df["label_str"].value_counts().to_dict()
     log.info("Label distribution: %s", label_counts)
 
-    # --- Assign splits ---
+    # Assign splits
     split_mask: dict[str, pd.Series] = {
         split: df["strat_fold"].isin(folds)
         for split, folds in FOLD_SPLITS.items()
@@ -152,7 +197,7 @@ def run(
     for split, sdf in splits.items():
         log.info("Split '%s': %d records", split, len(sdf))
 
-    # --- Load waveforms and reports per split ---
+    # Load waveforms and reports per split
     processed: dict[str, dict] = {}
     train_signals: list[np.ndarray] = []
 
@@ -161,7 +206,7 @@ def run(
         signals, reports, labels, ecg_ids = [], [], [], []
 
         for ecg_id, row in sdf.iterrows():
-            sig = load_waveform(row["filename_lr"], raw_data_dir)
+            sig = load_waveform(row["filename_lr"], raw_data_dir, bandpass_sos)
             if sig is None:
                 continue
             signals.append(sig)
@@ -179,7 +224,7 @@ def run(
         if split == "train":
             train_signals = signals
 
-    # --- Normalization stats from training split only ---
+    # Normalization stats from training split only
     log.info("Computing normalization statistics from training split...")
     norm_stats = compute_norm_stats(train_signals)
 
@@ -188,7 +233,7 @@ def run(
         json.dump(norm_stats, f, indent=2)
     log.info("Saved norm stats → %s", norm_stats_path)
 
-    # --- Apply normalization and save splits ---
+    # Apply normalization and save splits
     mean, std = norm_stats["mean"], norm_stats["std"]
 
     for split, data in processed.items():
@@ -203,7 +248,7 @@ def run(
         np.save(split_dir / "labels.npy",   np.array(data["labels"], dtype=np.int64))
         np.save(split_dir / "ecg_ids.npy",  np.array(data["ecg_ids"], dtype=np.int64))
 
-        # Reports saved as a plain text file, one per line
+        # Reports are saved as JSON to preserve Unicode text safely.
         with open(split_dir / "reports.json", "w", encoding="utf-8") as f:
             json.dump(data["reports"], f, ensure_ascii=False, indent=2)
 
@@ -212,12 +257,12 @@ def run(
             split, len(data["labels"]), norm_signals.shape,
         )
 
-    # --- Class weights (inverse frequency, training split only) ---
+    # Class weights (inverse frequency, training split only)
     train_labels = np.array(processed["train"]["labels"], dtype=np.int64)
     class_counts = np.bincount(train_labels, minlength=len(LABEL_MAP))
     class_weights = (class_counts.sum() / (len(LABEL_MAP) * class_counts)).tolist()
 
-    # --- Config snapshot ---
+    # Config snapshot
     snapshot = {
         "likelihood_threshold": likelihood_threshold,
         "label_map": LABEL_MAP,
@@ -225,6 +270,15 @@ def run(
         "label_counts": label_counts,
         "class_weights": class_weights,
         "norm_stats_path": str(norm_stats_path),
+        "filter": {
+            "apply_bandpass": apply_bandpass,
+            "type": "butterworth_bandpass" if apply_bandpass else None,
+            "order": filter_order if apply_bandpass else None,
+            "low_hz": filter_low_hz if apply_bandpass else None,
+            "high_hz": filter_high_hz if apply_bandpass else None,
+            "sampling_rate": sampling_rate,
+            "phase": "zero_phase_sosfiltfilt" if apply_bandpass else None,
+        },
     }
     snapshot_path = processed_data_dir / "config_snapshot.json"
     with open(snapshot_path, "w") as f:
