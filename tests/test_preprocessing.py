@@ -23,7 +23,7 @@ def _split_dir(split: str) -> Path:
     return PROCESSED_DIR / split
 
 
-# --- Helpers ---
+# Helpers 
 
 def load_split(split: str) -> tuple[np.ndarray, np.ndarray, list[str]]:
     d = _split_dir(split)
@@ -34,7 +34,7 @@ def load_split(split: str) -> tuple[np.ndarray, np.ndarray, list[str]]:
     return signals, labels, reports
 
 
-# --- Shape and dtype tests ---
+# Shape and dtype tests
 
 @pytest.mark.parametrize("split", SPLITS)
 def test_signal_shape(split):
@@ -58,7 +58,7 @@ def test_labels_valid_range(split):
     assert labels.max() < NUM_CLASSES
 
 
-# --- Normalization ---
+# Normalization
 
 def test_train_signals_approximately_normalized():
     """Training signals should be close to zero mean, unit variance per channel."""
@@ -81,7 +81,7 @@ def test_norm_stats_file_exists():
     assert len(stats["std"])  == NUM_LEADS
 
 
-# --- No data leakage between splits ---
+# No data leakage between splits
 
 def test_no_patient_overlap_across_splits():
     """
@@ -102,20 +102,22 @@ def test_no_patient_overlap_across_splits():
     assert id_sets["val"].isdisjoint(id_sets["test"]),   "Val/test overlap"
 
 
-# --- Config snapshot ---
+# Config snapshot
 
 def test_config_snapshot_exists_and_valid():
     path = PROCESSED_DIR / "config_snapshot.json"
     assert path.exists()
     with open(path) as f:
         snap = json.load(f)
-    assert "label_map"          in snap
-    assert "class_weights"      in snap
-    assert "likelihood_threshold" in snap
+    assert "label_map"             in snap
+    assert "class_weights"         in snap
+    assert "likelihood_threshold"  in snap
+    assert "filter"                in snap
+    assert "apply_bandpass"        in snap["filter"]
     assert len(snap["class_weights"]) == NUM_CLASSES
 
 
-# --- Reports ---
+# Reports
 
 @pytest.mark.parametrize("split", SPLITS)
 def test_reports_are_strings(split):
