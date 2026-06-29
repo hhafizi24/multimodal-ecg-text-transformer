@@ -1,8 +1,8 @@
 """
 Evaluation utilities for validation and final test-set analysis.
 
-Provides per-epoch validation metrics, per-class F1 scores, classification
-reports, and confusion matrix export for stage-level comparisons.
+Provides per-epoch validation metrics, macro ROC-AUC, per-class F1 scores,
+classification reports, and confusion matrix export for stage-level comparisons.
 """
 
 import json
@@ -21,6 +21,7 @@ from sklearn.metrics import (
     accuracy_score,
     precision_score,
     recall_score,
+    roc_auc_score,
 )
 from torch.utils.data import DataLoader
 
@@ -36,13 +37,13 @@ def evaluate(
     criterion: nn.Module | None = None,
 ) -> dict:
     """
-    Run inference over a DataLoader and return loss and F1 metrics.
+    Run inference over a DataLoader and return loss and classification metrics.
 
     Used both during training (val loop) and for final test set evaluation.
     criterion is optional — pass None to skip loss computation.
     """
     model.eval()
-    all_preds, all_labels = [], []
+    all_preds, all_labels, all_probs = [], [], []
     total_loss = 0.0
 
     with torch.inference_mode(): 
@@ -53,6 +54,7 @@ def evaluate(
             labels         = batch["label"].to(device)
 
             logits = model(signal, input_ids, attention_mask)
+            probs = torch.softmax(logits, dim=-1)
 
             if criterion is not None:
                 total_loss += criterion(logits, labels).item()
@@ -60,6 +62,7 @@ def evaluate(
             preds = logits.argmax(dim=-1)
             all_preds.extend(preds.cpu().tolist())
             all_labels.extend(labels.cpu().tolist())
+            all_probs.extend(probs.cpu().tolist())
 
     macro_f1 = f1_score(all_labels, all_preds, average="macro", zero_division=0)
     accuracy = accuracy_score(all_labels, all_preds)
@@ -79,12 +82,23 @@ def evaluate(
 
     per_class = f1_score(all_labels, all_preds, average=None, zero_division=0)
     per_class_f1 = {LABEL_NAMES[i]: float(per_class[i]) for i in range(len(LABEL_NAMES))}
+    try:
+        macro_auc = roc_auc_score(
+            all_labels,
+            np.array(all_probs),
+            multi_class="ovr",
+            average="macro",
+            labels=list(range(len(LABEL_NAMES))),
+        )
+    except ValueError:
+        macro_auc = float("nan")
 
     metrics = {
         "accuracy": float(accuracy),
         "macro_precision": float(macro_precision),
         "macro_recall": float(macro_recall),
         "macro_f1": float(macro_f1),
+        "macro_auc": float(macro_auc),
         "per_class_f1": per_class_f1,
         "loss": total_loss / len(loader) if criterion is not None else None,
         }

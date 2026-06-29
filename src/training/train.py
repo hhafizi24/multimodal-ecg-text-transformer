@@ -141,6 +141,7 @@ def train(
                     "val_macro_precision": val_metrics["macro_precision"],
                     "val_macro_recall": val_metrics["macro_recall"],
                     "val_macro_f1": val_metrics["macro_f1"],
+                    "val_macro_auc": val_metrics["macro_auc"],
                     **{f"val_f1_{k}": v for k, v in val_metrics["per_class_f1"].items()},
                     "lr": scheduler.get_last_lr()[0],
                 },
