@@ -20,6 +20,11 @@ def make_cfg(mode: str) -> ModelConfig:
         mode=mode,
         cnn_channels=[32, 64, 128],
         cnn_kernel_size=7,
+        cnn_kernel_sizes=None,
+        cnn_activation="gelu",
+        cnn_pooling="none",
+        classifier_hidden_dim=None,
+        classifier_dropout=0.0,
         transformer_hidden_dim=HIDDEN_DIM,
         transformer_num_heads=8,
         transformer_num_layers=2,  # smaller than production to keep tests fast
@@ -72,6 +77,22 @@ def test_signal_encoder_absent_in_text_only():
     model = MultimodalECGClassifier(make_cfg("text_only"))
 
     assert not hasattr(model, "signal_encoder")
+
+
+def test_signal_encoder_with_custom_cnn_config():
+    cfg = make_cfg("signal_only")
+    cfg.cnn_kernel_sizes = [7, 5, 3]
+    cfg.cnn_activation = "relu"
+    cfg.cnn_pooling = "max"
+
+    model = MultimodalECGClassifier(cfg)
+
+    signal, input_ids, attention_mask = make_inputs()
+
+    with torch.no_grad():
+        logits = model(signal, input_ids, attention_mask)
+
+    assert logits.shape == (BATCH, NUM_CLASSES)    
 
 
 def test_text_encoder_absent_in_signal_only():

@@ -32,6 +32,11 @@ def make_small_cfg() -> ModelConfig:
         mode="fusion",
         cnn_channels=[8, 16, 32],
         cnn_kernel_size=7,
+        cnn_kernel_sizes=None,
+        cnn_activation="gelu",
+        cnn_pooling="none",
+        classifier_hidden_dim=None,
+        classifier_dropout=0.0,
         transformer_hidden_dim=HIDDEN_DIM,
         transformer_num_heads=4,
         transformer_num_layers=1,
@@ -144,3 +149,6 @@ def test_onnx_dynamic_batch():
                 "text_emb": torch.randn(4, HIDDEN_DIM).numpy(),
             },
         )
+    
+    assert len(outputs) == 1
+    assert outputs[0].shape == (4, NUM_CLASSES)

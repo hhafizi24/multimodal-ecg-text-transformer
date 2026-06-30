@@ -1,28 +1,40 @@
 """
 Classification head.
 
-A single linear layer mapping from the shared embedding space to class logits.
+Uses a single linear layer by default. When classifier_hidden_dim is set, adds
+one hidden layer with dropout before the final projection.
 """
 
 import torch
 import torch.nn as nn
- 
- 
+
+
 class ClassificationHead(nn.Module):
     def __init__(self, cfg):
         """
         Args:
             cfg: ModelConfig. Relevant fields:
-                transformer_hidden_dim, num_classes.
+                transformer_hidden_dim, classifier_hidden_dim,
+                classifier_dropout, num_classes.
         """
         super().__init__()
-        self.linear = nn.Linear(cfg.transformer_hidden_dim, cfg.num_classes)
- 
+
+        if cfg.classifier_hidden_dim is None:
+            self.net = nn.Linear(cfg.transformer_hidden_dim, cfg.num_classes)
+        else:
+            self.net = nn.Sequential(
+                nn.Linear(cfg.transformer_hidden_dim, cfg.classifier_hidden_dim),
+                nn.GELU(),
+                nn.Dropout(p=cfg.classifier_dropout),
+                nn.Linear(cfg.classifier_hidden_dim, cfg.num_classes),
+            )
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
             x: [batch, hidden_dim]
+
         Returns:
             logits: [batch, num_classes]
         """
-        return self.linear(x)
+        return self.net(x)

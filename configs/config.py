@@ -17,19 +17,36 @@ class DataConfig:
 
 @dataclass
 class ModelConfig:
-    # Controls which branches are active in the model
+    # Active model branch: signal-only, text-only, or fusion.
     mode: Literal["signal_only", "text_only", "fusion"] = "fusion"
     cnn_channels: list[int] = field(default_factory=lambda: [32, 64, 128])
+
+    # Used for every CNN layer when cnn_kernel_sizes is None.
     cnn_kernel_size: int = 7
+
+    # Optional per-layer kernel sizes. Must match len(cnn_channels).
+    cnn_kernel_sizes: list[int] | None = None
+
+    cnn_activation: Literal["relu", "gelu", "silu", "leaky_relu"] = "gelu"
+    cnn_pooling: Literal["none", "max", "avg"] = "none"
     cnn_dropout: float = 0.0
+
     transformer_hidden_dim: int = 256
     transformer_num_heads: int = 8
     transformer_num_layers: int = 3
     transformer_dropout: float = 0.1
+
     text_model_name: str = "distilbert-base-multilingual-cased"
+    
     # Must match transformer_hidden_dim
     text_projection_dim: int = 256
+
     fusion_num_heads: int = 8
+
+    # Optional hidden layer in the classification head.
+    classifier_hidden_dim: int | None = None
+    classifier_dropout: float = 0.0
+
     num_classes: int = 5
 
 @dataclass
@@ -37,12 +54,14 @@ class TrainingConfig:
     learning_rate: float = 1e-4
     num_epochs: int = 30
     weight_decay: float = 1e-4
+
     # Learning rate schedule
     scheduler: Literal["cosine", "step"] = "cosine"
     checkpoint_dir: str = "models"
     experiment_name: str = "ecg_multimodal"
     use_class_weights: bool = True
     class_weights_path: str = "data/processed/config_snapshot.json"
+    
     # Set to None to disable early stopping
     early_stopping_patience: int | None = 5
 
