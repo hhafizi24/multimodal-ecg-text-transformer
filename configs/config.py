@@ -45,6 +45,7 @@ class ModelConfig:
 
     # Optional hidden layer in the classification head.
     classifier_hidden_dim: int | None = None
+    classifier_activation: Literal["relu", "gelu", "silu", "leaky_relu"] = "gelu"
     classifier_dropout: float = 0.0
 
     num_classes: int = 5

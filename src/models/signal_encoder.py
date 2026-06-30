@@ -20,6 +20,14 @@ _ACTIVATIONS = {
 
 class SignalEncoder(nn.Module):
     def __init__(self, cfg):
+        """
+        Args:
+            cfg: ModelConfig. Relevant fields:
+                cnn_channels, cnn_kernel_size, cnn_kernel_sizes,
+                cnn_activation, cnn_pooling, cnn_dropout,
+                transformer_hidden_dim, transformer_num_heads,
+                transformer_num_layers, transformer_dropout.
+        """
         super().__init__()
 
         kernel_sizes = (
@@ -47,7 +55,7 @@ class SignalEncoder(nn.Module):
 
         conv_stride = 1 if pool_cls is not None else 2
 
-        in_channels = 12
+        in_channels = 12   # one channel per ECG lead
         cnn_layers = []
 
         # If pooling is enabled, convolution extracts features before downsampling.
@@ -77,7 +85,8 @@ class SignalEncoder(nn.Module):
 
         self.input_proj = nn.Linear(cfg.cnn_channels[-1], cfg.transformer_hidden_dim)
 
-        # Max length leaves headroom above the ~125 tokens produced by the CNN stem.
+        # Positional embedding table sized with headroom above the ~125 tokens
+        # produced by the CNN stem.
         self.pos_embedding = nn.Embedding(200, cfg.transformer_hidden_dim)
         self.pos_drop = nn.Dropout(p=cfg.transformer_dropout)
 
