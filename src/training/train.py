@@ -91,6 +91,7 @@ def train(
     best_ckpt_path = checkpoint_dir / f"best_{train_cfg.experiment_name}.pt"
 
     best_val_f1 = -1.0
+    best_val_auc = float("nan")
     best_epoch = 0
     epochs_without_improvement = 0
 
@@ -165,10 +166,10 @@ def train(
                 },
                 step=epoch,
             )
-            # Validation macro F1 improved. Save a new best checkpoint and
-            # reset the early stopping patience counter.
+            # Validation macro F1 improved — reset patience and save checkpoint.
             if val_metrics["macro_f1"] > best_val_f1:
                 best_val_f1 = val_metrics["macro_f1"]
+                best_val_auc = val_metrics["macro_auc"]
                 best_epoch = epoch
                 epochs_without_improvement = 0
 
@@ -177,6 +178,7 @@ def train(
                         "epoch": epoch,
                         "model_state_dict": model.state_dict(),
                         "val_macro_f1": best_val_f1,
+                        "val_macro_auc": best_val_auc,
                         "train_cfg": train_cfg.__dict__,
                         "model_cfg": model_cfg.__dict__ if model_cfg is not None else None,
                         "augmentation": {
@@ -191,11 +193,12 @@ def train(
                 )
 
                 mlflow.log_metric("best_val_macro_f1", best_val_f1, step=epoch)
+                mlflow.log_metric("best_val_macro_auc", best_val_auc, step=epoch)
                 log.info("  ↳ New best checkpoint saved (val macro F1: %.4f)", best_val_f1)
 
             else:
-                # Validation macro F1 did not improve. Increment the patience
-                # counter and stop training once the configured patience is reached.
+                # No improvement in validation macro F1 — increment patience counter
+                # and stop training once patience is reached.
                 epochs_without_improvement += 1
 
                 if (
@@ -211,8 +214,9 @@ def train(
         mlflow.log_metric("best_epoch", best_epoch)            
         mlflow.log_artifact(str(best_ckpt_path))
         log.info(
-                "Training complete. Best val macro F1: %.4f at epoch %d", 
+                "Training complete. Best val macro F1: %.4f | best val macro AUC: %.4f at epoch %d", 
                  best_val_f1,
+                 best_val_auc,
                  best_epoch,
         )
 

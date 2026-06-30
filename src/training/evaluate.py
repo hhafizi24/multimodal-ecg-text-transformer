@@ -171,8 +171,7 @@ def _save_confusion_matrix(cm: np.ndarray, stage_name: str, figures_dir: str) ->
     figures_dir = Path(figures_dir)
     figures_dir.mkdir(parents=True, exist_ok=True)
 
-    # Row-normalize so the heatmap shows recall per class, not raw counts.
-    # Raw counts vary too much with class imbalance to be visually useful.
+    # Normalize each row to make performance comparable across classes.
     row_sums = cm.sum(axis=1, keepdims=True)
     cm_norm = np.divide(
         cm.astype(float),
