@@ -18,6 +18,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
 from torch.utils.data import DataLoader
 
 from src.training.evaluate import evaluate
+from src.training.focal_loss import FocalLoss
 
 log = logging.getLogger(__name__)
 
@@ -84,7 +85,10 @@ def train(
             return str(value)
         return value
 
-    criterion = nn.CrossEntropyLoss(weight=class_weights)
+    if train_cfg.loss_fn == "focal":
+        criterion = FocalLoss(gamma=train_cfg.focal_gamma, weight=class_weights)
+    else:
+        criterion = nn.CrossEntropyLoss(weight=class_weights)
 
     checkpoint_dir = Path(train_cfg.checkpoint_dir)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)

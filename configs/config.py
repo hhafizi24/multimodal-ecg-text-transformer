@@ -66,6 +66,10 @@ class TrainingConfig:
     # Set to None to disable early stopping
     early_stopping_patience: int | None = 5
 
+    loss_fn: Literal["cross_entropy", "focal"] = "cross_entropy"
+    # Used only when loss_fn="focal"
+    focal_gamma: float = 2.0
+
 @dataclass
 class ExportConfig:
     checkpoint_path: str = "models/best_model.pt"
