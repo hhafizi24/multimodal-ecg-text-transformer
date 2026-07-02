@@ -115,9 +115,8 @@ class MultiScaleStem(nn.Module):
         """
         outputs = [branch(x) for branch in self.branches]
 
-        # Minor differences in convolution arithmetic can produce branch
-        # outputs that differ by one timestep. Trim all branches to the
-        # shortest length before concatenation.
+        # Branch outputs that differ by one timestep. Trim all 
+        # branches to the shortest length before concatenation.
         min_len = min(out.size(-1) for out in outputs)
         outputs = [out[..., :min_len] for out in outputs]
 

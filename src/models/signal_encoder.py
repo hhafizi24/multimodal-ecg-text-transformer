@@ -34,9 +34,9 @@ class SignalEncoder(nn.Module):
 
         activation_cls = _ACTIVATIONS[cfg.cnn_activation]
 
-        # Build either the original sequential CNN stem or the parallel
-        # multi-scale stem. Both produce feature sequences that are projected
-        # into the shared transformer embedding space.
+        # Build either a sequential CNN stem or the parallel multi-scale stem. 
+        # Both produce feature sequences that are projected into the shared 
+        # transformer embedding space.
         if cfg.cnn_stem == "multiscale":
             self.cnn = MultiScaleStem(cfg)
             cnn_out_channels = self.cnn.out_channels

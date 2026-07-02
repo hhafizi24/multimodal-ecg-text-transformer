@@ -85,10 +85,17 @@ def train(
             return str(value)
         return value
 
-    if train_cfg.loss_fn == "focal":
-        criterion = FocalLoss(gamma=train_cfg.focal_gamma, weight=class_weights)
-    else:
+    if train_cfg.loss_fn == "cross_entropy":
         criterion = nn.CrossEntropyLoss(weight=class_weights)
+        
+    elif train_cfg.loss_fn == "focal":
+        criterion = FocalLoss(
+            gamma=train_cfg.focal_gamma, 
+            weight=class_weights
+        )
+
+    else:
+        raise ValueError(f"Unknown loss function: {train_cfg.loss_fn}")
 
     checkpoint_dir = Path(train_cfg.checkpoint_dir)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
