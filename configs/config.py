@@ -17,19 +17,30 @@ class DataConfig:
 
 @dataclass
 class ModelConfig:
-    # Active model branch: signal-only, text-only, or fusion.
+    # Active model branch: signal-only, text-only, or fusion
     mode: Literal["signal_only", "text_only", "fusion"] = "fusion"
     cnn_channels: list[int] = field(default_factory=lambda: [32, 64, 128])
 
-    # Used for every CNN layer when cnn_kernel_sizes is None.
+    # Used for every CNN layer when cnn_kernel_sizes is None
     cnn_kernel_size: int = 7
 
-    # Optional per-layer kernel sizes. Must match len(cnn_channels).
+    # Optional per-layer kernel sizes. Must match len(cnn_channels)
     cnn_kernel_sizes: list[int] | None = None
 
     cnn_activation: Literal["relu", "gelu", "silu", "leaky_relu"] = "gelu"
     cnn_pooling: Literal["none", "max", "avg"] = "none"
     cnn_dropout: float = 0.0
+
+    # CNN stem implementation used by the signal encoder
+    cnn_stem: Literal["sequential", "multiscale"] = "sequential"
+
+    # Used only when cnn_stem="multiscale"
+    multiscale_branch_channels: list[int] = field(
+        default_factory=lambda: [64, 64, 64]
+    )
+    multiscale_kernel_sizes: list[int] = field(
+        default_factory=lambda: [11, 21, 41]
+    )
 
     transformer_hidden_dim: int = 256
     transformer_num_heads: int = 8
@@ -43,7 +54,7 @@ class ModelConfig:
 
     fusion_num_heads: int = 8
 
-    # Optional hidden layer in the classification head.
+    # Optional hidden layer in the classification head
     classifier_hidden_dim: int | None = None
     classifier_activation: Literal["relu", "gelu", "silu", "leaky_relu"] = "gelu"
     classifier_dropout: float = 0.0
@@ -86,7 +97,7 @@ class BenchmarkConfig:
     output_json: str = "results/benchmark.json"
     output_figure: str = "results/figures/benchmark_comparison.png"
 
-# Register configs for optional Hydra CLI use.
+# Register configs for optional Hydra CLI use
 ecg_store = store(group="ecg")
 ecg_store(DataConfig, name="default_data")
 ecg_store(ModelConfig, name="signal_only", mode="signal_only")

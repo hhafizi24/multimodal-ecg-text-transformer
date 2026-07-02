@@ -16,6 +16,7 @@ HIDDEN_DIM = 256
 
 
 def make_cfg(mode: str) -> ModelConfig:
+    """Construct a minimal model configuration for unit tests."""
     return ModelConfig(
         mode=mode,
         cnn_channels=[32, 64, 128],
@@ -23,17 +24,42 @@ def make_cfg(mode: str) -> ModelConfig:
         cnn_kernel_sizes=None,
         cnn_activation="gelu",
         cnn_pooling="none",
+        cnn_stem="sequential",
+        multiscale_branch_channels=[32, 32, 32],
+        multiscale_kernel_sizes=[11, 21, 41],
         classifier_hidden_dim=None,
         classifier_dropout=0.0,
         transformer_hidden_dim=HIDDEN_DIM,
         transformer_num_heads=8,
-        transformer_num_layers=2,  # smaller than production to keep tests fast
+        transformer_num_layers=2,  # use a smaller model to keep tests fast
         transformer_dropout=0.0,
         text_model_name="distilbert-base-multilingual-cased",
         text_projection_dim=HIDDEN_DIM,
         fusion_num_heads=8,
         num_classes=NUM_CLASSES,
     )
+
+
+def test_multiscale_stem_forward_pass():
+    """Verify the multiscale CNN stem produces valid outputs and gradients."""
+    cfg = make_cfg("signal_only")
+    cfg.cnn_stem = "multiscale"
+    cfg.multiscale_branch_channels = [32, 32, 32]
+    cfg.multiscale_kernel_sizes = [11, 21, 41]
+
+    model = MultimodalECGClassifier(cfg)
+    model.train()
+
+    signal, input_ids, attention_mask = make_inputs()
+    logits = model(signal, input_ids, attention_mask)
+
+    assert logits.shape == (BATCH, NUM_CLASSES)
+
+    logits.sum().backward()
+
+    for name, param in model.signal_encoder.cnn.named_parameters():
+        if param.requires_grad:
+            assert param.grad is not None, f"No gradient for: {name}"
 
 
 def make_inputs():
@@ -50,7 +76,7 @@ def test_forward_pass_output_shape(mode):
 
     signal, input_ids, attention_mask = make_inputs()
 
-    with torch.no_grad():
+    with torch.inference_mode():
         logits = model(signal, input_ids, attention_mask)
 
     assert logits.shape == (BATCH, NUM_CLASSES), (
@@ -89,7 +115,7 @@ def test_signal_encoder_with_custom_cnn_config():
 
     signal, input_ids, attention_mask = make_inputs()
 
-    with torch.no_grad():
+    with torch.inference_mode():
         logits = model(signal, input_ids, attention_mask)
 
     assert logits.shape == (BATCH, NUM_CLASSES)    
@@ -143,7 +169,7 @@ def test_logits_are_raw_not_softmaxed():
 
     signal, input_ids, attention_mask = make_inputs()
 
-    with torch.no_grad():
+    with torch.inference_mode():
         logits = model(signal, input_ids, attention_mask)
 
     row_sums = logits.sum(dim=-1)
