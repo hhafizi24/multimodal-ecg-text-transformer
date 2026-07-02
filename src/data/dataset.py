@@ -150,6 +150,18 @@ class ECGTextDataset(Dataset):
             "label":          label_tensor,
         }
 
+def _worker_init_fn(worker_id: int) -> None:
+    """
+    Initialize RNG state for a DataLoader worker.
+
+    PyTorch derives each worker seed from the DataLoader generator. The same
+    seed is applied to NumPy and Python's random module so sample-level
+    augmentation remains deterministic across worker processes.
+    """
+    worker_seed = torch.initial_seed() % (2**32)
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
 
 def make_dataloader(
     split_dir: str,
@@ -159,6 +171,7 @@ def make_dataloader(
     shuffle: bool = False,
     num_workers: int = 2,
     augmentation: ECGAugmentation | None = None,
+    seed: int = 42,
 ) -> DataLoader:
     dataset = ECGTextDataset(
         split_dir,
@@ -166,10 +179,15 @@ def make_dataloader(
         max_text_length,
         augmentation=augmentation,
     )
+
+    generator = torch.Generator()
+    generator.manual_seed(seed)
     return DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=shuffle,
         num_workers=num_workers,
         pin_memory=True,
+        worker_init_fn=_worker_init_fn,
+        generator=generator,
     )

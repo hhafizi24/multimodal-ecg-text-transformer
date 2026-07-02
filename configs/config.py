@@ -81,6 +81,9 @@ class TrainingConfig:
     # Used only when loss_fn="focal"
     focal_gamma: float = 2.0
 
+    # Controls initialization, shuffling, augmentation, and dropout RNGs
+    seed: int = 42
+
 @dataclass
 class ExportConfig:
     checkpoint_path: str = "models/best_model.pt"

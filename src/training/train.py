@@ -19,6 +19,7 @@ from torch.utils.data import DataLoader
 
 from src.training.evaluate import evaluate
 from src.training.focal_loss import FocalLoss
+from src.training.utils import seed_everything
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +58,7 @@ def train(
     Returns:
         Path to the best saved checkpoint.
     """
+    seed_everything(train_cfg.seed)
     model.to(device)
 
     optimizer = AdamW(
