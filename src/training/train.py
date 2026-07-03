@@ -131,6 +131,7 @@ def train(
         mlflow.log_params(params)
 
         if run_notes:
+            mlflow.set_tag("run_notes", run_notes)
             mlflow.log_text(run_notes, "run_notes.txt")
 
         for epoch in range(1, train_cfg.num_epochs + 1):
