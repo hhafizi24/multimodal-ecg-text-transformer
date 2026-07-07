@@ -3,16 +3,16 @@
 A multimodal transformer that fuses 12-lead ECG waveforms with cardiologist report text
 to perform 5-class cardiac diagnostic classification on PTB-XL.
 
-> **Status:** Work in progress — results and benchmark numbers will be filled in upon completion.
+> **Status:** Work in progress. Final experiments, benchmarking, and performance metrics will be added upon project completion.
 
 ## Overview
 
-This project studies how structured biosignal representations and clinical language
-representations each contribute to ECG diagnostic classification. Three model variants
-are trained and evaluated:
+This project implements a modular multimodal deep learning pipeline for ECG diagnostic
+classification and evaluates the individual and combined contributions of biosignal and
+clinical text representations. Three model variants are trained and evaluated:
 
 - **Stage A** — ECG signal only (CNN stem + transformer encoder)
-- **Stage B** — Cardiologist report text only (frozen multilingual DistilBERT)
+- **Stage B** — Cardiologist report text only (frozen MedBERTde clinical language encoder and trainable classification head)
 - **Stage C** — Late fusion of both modalities via cross-attention
 
 The full pipeline covers data preprocessing, model training, ONNX export and quantization,
