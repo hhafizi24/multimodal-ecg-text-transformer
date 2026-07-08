@@ -3,7 +3,7 @@ ONNX export smoke test.
 
 Validates that the ONNX-exportable portion of the model (signal encoder,
 fusion module, and classifier) exports cleanly and produces correct outputs.
-DistilBERT is excluded because it runs outside the ONNX graph in deployment.
+MedBERT.de is excluded because it runs outside the ONNX graph in deployment.
 """
 
 import tempfile
@@ -41,7 +41,7 @@ def make_small_cfg() -> ModelConfig:
         transformer_num_heads=4,
         transformer_num_layers=1,
         transformer_dropout=0.0,
-        text_model_name="distilbert-base-multilingual-cased",
+        text_model_name="GerMedBERT/medbert-512",
         text_projection_dim=HIDDEN_DIM,
         fusion_num_heads=4,
         num_classes=NUM_CLASSES,

@@ -1,7 +1,7 @@
 """
-Text encoder: frozen multilingual DistilBERT with a trainable projection head.
+Text encoder: frozen MedBERTde clinical language encoder with a trainable projection head.
 
-DistilBERT remains frozen during training, while a linear projection maps the
+MedBERT.de remains frozen during training, while a linear projection maps the
 768-dimensional CLS-position representation into the shared embedding space.
 """
 
@@ -19,15 +19,15 @@ class TextEncoder(nn.Module):
         """
         super().__init__()
 
-        self.distilbert = AutoModel.from_pretrained(cfg.text_model_name)
+        self.text_model = AutoModel.from_pretrained(cfg.text_model_name)
 
-        # Freeze all DistilBERT parameters
-        for param in self.distilbert.parameters():
+        # Freeze all MedBERTde parameters
+        for param in self.text_model.parameters():
             param.requires_grad = False
 
-        # Project CLS token (768-dim) to the shared embedding space
+        # Project CLS-position representation into the shared embedding space
         self.projection = nn.Linear(
-            self.distilbert.config.hidden_size,  # 768
+            self.text_model.config.hidden_size,  
             cfg.text_projection_dim,
         )
 
@@ -40,9 +40,9 @@ class TextEncoder(nn.Module):
             embedding: [batch, text_projection_dim]
         """
         with torch.no_grad():
-            outputs = self.distilbert(
+            outputs = self.text_model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
             )
-        cls_token = outputs.last_hidden_state[:, 0, :]  # [B, 768] — CLS-position representation
-        return self.projection(cls_token)               # [B, text_projection_dim]
+        cls_token = outputs.last_hidden_state[:, 0, :].clone()  # [B, 768] — CLS-position representation
+        return self.projection(cls_token)                       # [B, text_projection_dim]

@@ -33,7 +33,7 @@ def make_cfg(mode: str) -> ModelConfig:
         transformer_num_heads=8,
         transformer_num_layers=2,  # use a smaller model to keep tests fast
         transformer_dropout=0.0,
-        text_model_name="distilbert-base-multilingual-cased",
+        text_model_name="GerMedBERT/medbert-512",
         text_projection_dim=HIDDEN_DIM,
         fusion_num_heads=8,
         num_classes=NUM_CLASSES,
@@ -85,10 +85,10 @@ def test_forward_pass_output_shape(mode):
 
 
 @pytest.mark.parametrize("mode", ["text_only", "fusion"])
-def test_distilbert_params_frozen(mode):
+def test_text_encoder_params_frozen(mode):
     model = MultimodalECGClassifier(make_cfg(mode))
 
-    for name, param in model.text_encoder.distilbert.named_parameters():
+    for name, param in model.text_encoder.text_model.named_parameters():
         assert not param.requires_grad, f"Expected frozen parameter: {name}"
 
 

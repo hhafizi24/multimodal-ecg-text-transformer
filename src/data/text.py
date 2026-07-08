@@ -1,15 +1,15 @@
 """
 Tokenization helpers for the clinical report text branch.
 
-Wraps the multilingual DistilBERT tokenizer with project-specific defaults.
-The tokenizer is loaded once at the call site and reused — don't instantiate
-it inside the Dataset __getitem__.
+Wraps the MedBERT.de tokenizer with project-specific defaults. The tokenizer
+is loaded once at the call site and reused — don't instantiate it inside the
+Dataset __getitem__.
 """
 
 from transformers import AutoTokenizer
 
 
-def load_tokenizer(model_name: str = "distilbert-base-multilingual-cased"):
+def load_tokenizer(model_name: str = "GerMedBERT/medbert-512"):
     return AutoTokenizer.from_pretrained(model_name)
 
 

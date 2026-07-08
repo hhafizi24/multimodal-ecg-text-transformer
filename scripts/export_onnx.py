@@ -1,7 +1,7 @@
 """
 Export the fusion model to ONNX and apply dynamic quantization.
 
-DistilBERT and the projection layer remain outside the ONNX graph. The exported
+MedBERT.de and the projection layer remain outside the ONNX graph. The exported
 graph accepts raw ECG signals and pre-computed projected text embeddings,
 matching the deployment inference boundary.
 
@@ -33,7 +33,7 @@ class ExportableECGModel(nn.Module):
     Thin wrapper that isolates the ONNX-exportable portion of the fusion model:
     signal encoder + fusion module + classifier.
 
-    The text encoder (DistilBERT + projection) is excluded — its output is
+    The text encoder (MedBERT.de + projection) is excluded, its output is
     passed in as a pre-computed embedding.
     """
 
@@ -47,7 +47,7 @@ class ExportableECGModel(nn.Module):
         """
         Args:
             signal:   [batch, 1000, 12]
-            text_emb: [batch, hidden_dim] — projected text embedding from DistilBERT
+            text_emb: [batch, hidden_dim] — projected text embedding from MedBERT.de
         Returns:
             logits: [batch, num_classes]
         """

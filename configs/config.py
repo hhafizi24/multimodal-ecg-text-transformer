@@ -47,7 +47,7 @@ class ModelConfig:
     transformer_num_layers: int = 3
     transformer_dropout: float = 0.1
 
-    text_model_name: str = "distilbert-base-multilingual-cased"
+    text_model_name: str = "GerMedBERT/medbert-512"
     
     # Must match transformer_hidden_dim
     text_projection_dim: int = 256
