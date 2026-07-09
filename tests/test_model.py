@@ -62,6 +62,29 @@ def test_multiscale_stem_forward_pass():
             assert param.grad is not None, f"No gradient for: {name}"
 
 
+def test_depthwise_se_stem_forward_pass():
+    """Verify the depthwise-separable + SE stem produces valid outputs and gradients."""
+    cfg = make_cfg("signal_only")
+    cfg.cnn_stem = "depthwise_se"
+    cfg.dwsep_channels = [32, 32, 64]
+    cfg.dwsep_kernel_sizes = [7, 7, 5]
+    cfg.se_reduction_ratio = 8
+
+    model = MultimodalECGClassifier(cfg)
+    model.train()
+
+    signal, input_ids, attention_mask = make_inputs()
+    logits = model(signal, input_ids, attention_mask)
+
+    assert logits.shape == (BATCH, NUM_CLASSES)
+
+    logits.sum().backward()
+
+    for name, param in model.signal_encoder.cnn.named_parameters():
+        if param.requires_grad:
+            assert param.grad is not None, f"No gradient for: {name}"
+
+
 def make_inputs():
     signal = torch.randn(BATCH, 1000, 12)
     input_ids = torch.randint(0, 1000, (BATCH, SEQ_LEN))

@@ -32,7 +32,7 @@ class ModelConfig:
     cnn_dropout: float = 0.0
 
     # CNN stem implementation used by the signal encoder
-    cnn_stem: Literal["sequential", "multiscale"] = "sequential"
+    cnn_stem: Literal["sequential", "multiscale", "depthwise_se"] = "sequential"
 
     # Used only when cnn_stem="multiscale"
     multiscale_branch_channels: list[int] = field(
@@ -41,6 +41,13 @@ class ModelConfig:
     multiscale_kernel_sizes: list[int] = field(
         default_factory=lambda: [11, 21, 41]
     )
+
+    # Used only when cnn_stem="depthwise_se"
+    dwsep_channels: list[int] = field(
+        default_factory=lambda: [64, 64, 128, 128]
+    )
+    dwsep_kernel_sizes: list[int] | None = None
+    se_reduction_ratio: int = 8
 
     transformer_hidden_dim: int = 256
     transformer_num_heads: int = 8

@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 
 from src.models.multiscale_stem import MultiScaleStem
+from src.models.depthwise_se_stem import DepthwiseSeparableSEStem
 
 _ACTIVATIONS = {
     "relu": nn.ReLU,
@@ -34,11 +35,14 @@ class SignalEncoder(nn.Module):
 
         activation_cls = _ACTIVATIONS[cfg.cnn_activation]
 
-        # Build either a sequential CNN stem or the parallel multi-scale stem. 
-        # Both produce feature sequences that are projected into the shared 
-        # transformer embedding space.
+        # Build the configured CNN stem. All stem implementations produce feature
+        # sequences that are projected into the shared transformer embedding space.
         if cfg.cnn_stem == "multiscale":
             self.cnn = MultiScaleStem(cfg)
+            cnn_out_channels = self.cnn.out_channels
+        
+        elif cfg.cnn_stem == "depthwise_se":
+            self.cnn = DepthwiseSeparableSEStem(cfg)
             cnn_out_channels = self.cnn.out_channels
 
         elif cfg.cnn_stem == "sequential":
