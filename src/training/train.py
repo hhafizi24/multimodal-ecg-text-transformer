@@ -101,7 +101,8 @@ def train(
 
     checkpoint_dir = Path(train_cfg.checkpoint_dir)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    best_ckpt_path = checkpoint_dir / f"best_{train_cfg.experiment_name}.pt"
+    checkpoint_name = train_cfg.run_name or train_cfg.experiment_name
+    best_ckpt_path = checkpoint_dir / f"best_{checkpoint_name}.pt"
 
     best_val_f1 = -1.0
     best_val_auc = float("nan")
@@ -109,7 +110,7 @@ def train(
     epochs_without_improvement = 0
 
     mlflow.set_experiment(train_cfg.experiment_name)
-    with mlflow.start_run():
+    with mlflow.start_run(run_name=train_cfg.run_name):
         # Log experiment settings so runs can be compared and reproduced from MLflow.
         aug = getattr(train_loader.dataset, "augmentation", None)
 
@@ -132,7 +133,7 @@ def train(
 
         if run_notes:
             mlflow.set_tag("run_notes", run_notes)
-            mlflow.log_text(run_notes, "run_notes.txt")
+            mlflow.log_text(run_notes, "metadata/run_notes.txt")
 
         for epoch in range(1, train_cfg.num_epochs + 1):
             model.train()
@@ -225,8 +226,8 @@ def train(
                     )
                     break
 
-        mlflow.log_metric("best_epoch", best_epoch)            
-        mlflow.log_artifact(str(best_ckpt_path))
+        mlflow.log_metric("best_epoch", best_epoch)           
+        mlflow.log_artifact(str(best_ckpt_path), artifact_path="checkpoints")
         log.info(
                 "Training complete. Best val macro F1: %.4f | best val macro AUC: %.4f at epoch %d", 
                  best_val_f1,
