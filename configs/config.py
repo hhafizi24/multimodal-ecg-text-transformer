@@ -78,7 +78,7 @@ class TrainingConfig:
     scheduler: Literal["cosine", "step"] = "cosine"
     checkpoint_dir: str = "models"
     experiment_name: str = "ecg_multimodal"
-    run_name: str = "run"
+    run_name: str | None = None
     use_class_weights: bool = True
     class_weights_path: str = "data/processed/config_snapshot.json"
     
