@@ -46,18 +46,20 @@ class MultimodalECGClassifier(nn.Module):
     def forward(
         self,
         signal: torch.Tensor,
-        input_ids: torch.Tensor,
-        attention_mask: torch.Tensor,
+        input_ids: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        cached_embedding: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
-        All three inputs are always passed in regardless of mode — unused
-        tensors are simply ignored. This keeps the training loop and
-        DataLoader uniform across all stages.
+        All inputs are always passed in regardless of mode — unused tensors
+        are simply ignored. cached_embedding, when provided, bypasses the
+        frozen text backbone entirely (see TextEncoder.forward).
 
         Args:
-            signal:         [batch, 1000, 12]
-            input_ids:      [batch, seq_len]
-            attention_mask: [batch, seq_len]
+            signal:           [batch, 1000, 12]
+            input_ids:        [batch, seq_len]
+            attention_mask:   [batch, seq_len]
+            cached_embedding: [batch, hidden_size], optional
         Returns:
             logits: [batch, num_classes]
         """
@@ -65,11 +67,11 @@ class MultimodalECGClassifier(nn.Module):
             emb = self.signal_encoder(signal)
 
         elif self.mode == "text_only":
-            emb = self.text_encoder(input_ids, attention_mask)
+            emb = self.text_encoder(input_ids, attention_mask, cached_embedding)
 
         else:  # fusion
             sig_emb = self.signal_encoder(signal)
-            txt_emb = self.text_encoder(input_ids, attention_mask)
+            txt_emb = self.text_encoder(input_ids, attention_mask, cached_embedding)
             emb = self.fusion(sig_emb, txt_emb)
 
         return self.classifier(emb)

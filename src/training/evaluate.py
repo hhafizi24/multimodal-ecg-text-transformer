@@ -12,8 +12,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-import torch
-import torch.nn as nn
 from sklearn.metrics import (
     classification_report,
     confusion_matrix,
@@ -23,6 +21,10 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
+
+import torch
+import torch.nn as nn
+from torch.amp import autocast
 from torch.utils.data import DataLoader
 
 log = logging.getLogger(__name__)
@@ -45,15 +47,24 @@ def evaluate(
     model.eval()
     all_preds, all_labels, all_probs = [], [], []
     total_loss = 0.0
+    use_amp = device.type == "cuda"
 
-    with torch.inference_mode(): 
+    with torch.inference_mode():
         for batch in loader:
-            signal         = batch["signal"].to(device)
-            input_ids      = batch["input_ids"].to(device)
-            attention_mask = batch["attention_mask"].to(device)
-            labels         = batch["label"].to(device)
+            signal = batch["signal"].to(device)
+            labels = batch["label"].to(device)
 
-            logits = model(signal, input_ids, attention_mask)
+            if "text_embedding" in batch:
+                input_ids, attention_mask = None, None
+                cached_embedding = batch["text_embedding"].to(device)
+            else:
+                input_ids        = batch["input_ids"].to(device)
+                attention_mask   = batch["attention_mask"].to(device)
+                cached_embedding = None
+
+            with autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
+                logits = model(signal, input_ids, attention_mask, cached_embedding)
+            logits = logits.float()
             probs = torch.softmax(logits, dim=-1)
 
             if criterion is not None:

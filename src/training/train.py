@@ -13,6 +13,7 @@ from pathlib import Path
 import mlflow
 import torch
 import torch.nn as nn
+from torch.amp import GradScaler, autocast
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
 from torch.utils.data import DataLoader
@@ -66,6 +67,9 @@ def train(
         lr=train_cfg.learning_rate,
         weight_decay=train_cfg.weight_decay,
     )
+
+    use_amp = device.type == "cuda"
+    scaler = GradScaler("cuda", enabled=use_amp)
 
     if train_cfg.scheduler == "cosine":
         scheduler = CosineAnnealingLR(optimizer, T_max=train_cfg.num_epochs)
@@ -140,20 +144,33 @@ def train(
             total_loss = 0.0
 
             for batch in train_loader:
-                signal         = batch["signal"].to(device)
-                input_ids      = batch["input_ids"].to(device)
-                attention_mask = batch["attention_mask"].to(device)
-                labels         = batch["label"].to(device)
+                signal = batch["signal"].to(device)
+                labels = batch["label"].to(device)
 
-                optimizer.zero_grad()
-                logits = model(signal, input_ids, attention_mask)
-                loss   = criterion(logits, labels)
-                loss.backward()
+                if "text_embedding" in batch:
+                    input_ids, attention_mask = None, None
+                    cached_embedding = batch["text_embedding"].to(device)
+                else:
+                    input_ids        = batch["input_ids"].to(device)
+                    attention_mask   = batch["attention_mask"].to(device)
+                    cached_embedding = None
+
+                optimizer.zero_grad(set_to_none=True)
+
+                with autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
+                    logits = model(signal, input_ids, attention_mask, cached_embedding)
+                    loss   = criterion(logits, labels)
+
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
 
                 # Gradient clipping — stabilizes training without tuning LR aggressively
-                nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                nn.utils.clip_grad_norm_(
+                    filter(lambda p: p.requires_grad, model.parameters()), max_norm=1.0
+                )
 
-                optimizer.step()
+                scaler.step(optimizer)
+                scaler.update()
                 total_loss += loss.item()
 
             scheduler.step()

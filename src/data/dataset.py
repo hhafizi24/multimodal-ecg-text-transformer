@@ -1,11 +1,11 @@
 """
-PyTorch Dataset and DataLoader factory for the preprocessed PTB-XL splits.
+PyTorch datasets and DataLoader factories for preprocessed PTB-XL splits.
 
-Signals are already normalized on disk. Tokenization happens here at sample
-load time using a tokenizer instance passed in at construction.
+Signals are already normalized on disk. Text inputs are provided either
+through on-demand tokenization or precomputed frozen-backbone CLS features.
 
-Augmentation is applied at the sample level during training only — val and
-test loaders always receive unmodified signals.
+Augmentation is applied at the sample level during training only; validation
+and test loaders always receive unmodified signals.
 """
 
 import json
@@ -149,6 +149,75 @@ class ECGTextDataset(Dataset):
             "attention_mask": encoded["attention_mask"].squeeze(0),
             "label":          label_tensor,
         }
+    
+class CachedEmbeddingDataset(Dataset):
+    """
+    Same signal loading and augmentation as ECGTextDataset, but the text
+    branch is a precomputed CLS feature instead of tokenized input. Requires
+    the frozen backbone to stay frozen — see scripts/precompute_text_features.py.
+    """
+
+    def __init__(
+        self,
+        split_dir: str,
+        embedding_path: str,
+        augmentation: ECGAugmentation | None = None,
+    ):
+        split_dir = Path(split_dir)
+
+        self.signals    = np.load(split_dir / "signals.npy")
+        self.labels     = np.load(split_dir / "labels.npy")
+        self.embeddings = np.load(embedding_path)  # [N, hidden_size], pre-projection
+
+        assert len(self.signals) == len(self.labels) == len(self.embeddings), (
+            "Mismatch between signals, labels, and cached embeddings — re-run precompute script."
+        )
+
+        self.augmentation = augmentation
+
+    def __len__(self) -> int:
+        return len(self.labels)
+
+    def __getitem__(self, idx: int) -> dict:
+        signal = self.signals[idx].copy()
+        label  = int(self.labels[idx])
+
+        if (
+            self.augmentation is not None
+            and label in self.augmentation.augment_classes
+        ):
+            signal = self.augmentation(signal)
+
+        return {
+            "signal":         torch.from_numpy(signal).float(),
+            "text_embedding": torch.from_numpy(self.embeddings[idx]).float(),
+            "label":          torch.tensor(label, dtype=torch.long),
+        }
+
+
+def make_cached_dataloader(
+    split_dir: str,
+    embedding_path: str,
+    batch_size: int = 32,
+    shuffle: bool = False,
+    num_workers: int = 2,
+    augmentation: ECGAugmentation | None = None,
+    seed: int = 42,
+) -> DataLoader:
+    dataset = CachedEmbeddingDataset(split_dir, embedding_path, augmentation=augmentation)
+
+    generator = torch.Generator()
+    generator.manual_seed(seed)
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=num_workers,
+        pin_memory=True,
+        worker_init_fn=_worker_init_fn,
+        generator=generator,
+    )
+
 
 def _worker_init_fn(worker_id: int) -> None:
     """
