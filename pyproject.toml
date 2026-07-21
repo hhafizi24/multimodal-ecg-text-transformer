@@ -15,6 +15,7 @@ dependencies = [
     "torchaudio>=2.2.0",
     # Pretrained language models
     "transformers>=4.38.0",
+    "peft>=0.10.0",
     # ONNX export and inference
     "onnx>=1.16.0",
     "onnxruntime>=1.17.0",

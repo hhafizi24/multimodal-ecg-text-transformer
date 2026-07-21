@@ -40,6 +40,17 @@ def make_cfg(mode: str) -> ModelConfig:
     )
 
 
+def make_lora_cfg(mode: str) -> ModelConfig:
+    """Build a test configuration with LoRA enabled."""
+    cfg = make_cfg(mode)
+    cfg.use_lora = True
+    cfg.lora_r = 4
+    cfg.lora_alpha = 8
+    cfg.lora_dropout = 0.0
+    cfg.lora_target_modules = ["query", "value"]
+    return cfg
+
+
 def test_multiscale_stem_forward_pass():
     """Verify the multiscale CNN stem produces valid outputs and gradients."""
     cfg = make_cfg("signal_only")
@@ -90,6 +101,50 @@ def make_inputs():
     input_ids = torch.randint(0, 1000, (BATCH, SEQ_LEN))
     attention_mask = torch.ones(BATCH, SEQ_LEN, dtype=torch.long)
     return signal, input_ids, attention_mask
+
+
+@pytest.mark.parametrize("mode", ["text_only", "fusion"])
+def test_lora_adapters_trainable_backbone_otherwise_frozen(mode):
+    model = MultimodalECGClassifier(make_lora_cfg(mode))
+
+    has_lora_param = False
+    for name, param in model.text_encoder.text_model.named_parameters():
+        if "lora_" in name:
+            has_lora_param = True
+            assert param.requires_grad, f"Expected trainable LoRA parameter: {name}"
+        else:
+            assert not param.requires_grad, f"Expected frozen base parameter: {name}"
+
+    assert has_lora_param, (
+    "No LoRA parameters found; check lora_target_modules."
+    )
+
+
+def test_lora_gradients_flow_into_adapters():
+    model = MultimodalECGClassifier(make_lora_cfg("text_only"))
+    model.train()
+
+    signal, input_ids, attention_mask = make_inputs()
+    logits = model(signal, input_ids, attention_mask)
+    logits.sum().backward()
+
+    lora_params = [
+    (name, param)
+    for name, param in model.text_encoder.text_model.named_parameters()
+    if "lora_" in name
+    ]
+    assert lora_params, "No LoRA parameters found."
+    for name, param in lora_params:
+        assert param.grad is not None, f"No gradient for LoRA parameter: {name}"
+
+
+def test_cached_embedding_rejected_with_lora():
+    model = MultimodalECGClassifier(make_lora_cfg("text_only"))
+    signal, _, _ = make_inputs()
+    fake_cached = torch.randn(BATCH, model.text_encoder.projection.in_features)
+
+    with pytest.raises(ValueError):
+        model(signal, cached_embedding=fake_cached)
 
 
 @pytest.mark.parametrize("mode", ["signal_only", "text_only", "fusion"])

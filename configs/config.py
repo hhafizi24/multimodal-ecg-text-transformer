@@ -59,6 +59,13 @@ class ModelConfig:
     # Must match transformer_hidden_dim
     text_projection_dim: int = 256
 
+    # Optional LoRA adaptation of the text backbone
+    use_lora: bool = False
+    lora_r: int = 8
+    lora_alpha: int = 16
+    lora_dropout: float = 0.05
+    lora_target_modules: list[str] = field(default_factory=lambda: ["query", "value"])
+
     fusion_num_heads: int = 8
 
     # Optional hidden layer in the classification head

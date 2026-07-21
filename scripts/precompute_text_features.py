@@ -1,10 +1,8 @@
 """
-Precompute frozen MedBERT.de CLS features for each PTB-XL split.
+Precompute CLS features from the frozen MedBERT.de backbone.
 
-Run once. Saves an [N, hidden_size] float32 array per split to
-data/processed/{split}/text_features.npy, row-aligned with signals.npy
-and labels.npy. Enables cached-embedding training for Stage B and Stage C
-for as long as the text backbone stays fully frozen.
+Features are stored per split and remain row-aligned with the processed
+signals and labels.
 """
 
 import argparse
@@ -40,7 +38,7 @@ def precompute_split(
             max_length=max_text_length,
             return_tensors="pt",
         )
-        feats = text_encoder.extract_frozen_features(
+        feats = text_encoder.extract_features(
             encoded["input_ids"].to(device),
             encoded["attention_mask"].to(device),
         )
