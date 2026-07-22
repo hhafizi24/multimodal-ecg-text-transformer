@@ -1,9 +1,8 @@
 """
-Classification head.
+Classification head for unimodal and fused embeddings.
 
-Uses a single linear layer by default. When classifier_hidden_dim is set, adds
-one hidden layer with configurable activation and dropout before the final
-projection.
+Uses a linear output layer by default or a one-hidden-layer MLP when
+classifier_hidden_dim is configured.
 """
 
 import torch

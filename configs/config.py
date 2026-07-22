@@ -68,6 +68,12 @@ class ModelConfig:
 
     fusion_num_heads: int = 8
 
+    # Freeze pretrained encoders during fusion training
+    freeze_encoders: bool = False
+
+    # Probability of dropping the text modality during fusion training
+    text_modality_dropout_p: float = 0.0
+
     # Optional hidden layer in the classification head
     classifier_hidden_dim: int | None = None
     classifier_activation: Literal["relu", "gelu", "silu", "leaky_relu"] = "gelu"

@@ -43,35 +43,67 @@ class MultimodalECGClassifier(nn.Module):
 
         self.classifier = ClassificationHead(cfg)
 
+        # Freeze pretrained encoders during fusion training
+        self.freeze_encoders = cfg.freeze_encoders
+        if self.freeze_encoders:
+            if hasattr(self, "signal_encoder"):
+                for p in self.signal_encoder.parameters():
+                    p.requires_grad = False
+            if hasattr(self, "text_encoder"):
+                for p in self.text_encoder.parameters():
+                    p.requires_grad = False
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if self.freeze_encoders:
+            if hasattr(self, "signal_encoder"):
+                self.signal_encoder.eval()
+            if hasattr(self, "text_encoder"):
+                self.text_encoder.eval()
+        return self
+
     def forward(
         self,
-        signal: torch.Tensor,
+        signal: torch.Tensor | None = None,
         input_ids: torch.Tensor | None = None,
         attention_mask: torch.Tensor | None = None,
         cached_embedding: torch.Tensor | None = None,
+        signal_embedding: torch.Tensor | None = None,
+        text_embedding: torch.Tensor | None = None,
+        text_available: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
-        All inputs are always passed in regardless of mode — unused tensors
-        are simply ignored. cached_embedding, when provided, bypasses the
-        frozen text backbone entirely (see TextEncoder.forward).
-
         Args:
             signal:           [batch, 1000, 12]
             input_ids:        [batch, seq_len]
             attention_mask:   [batch, seq_len]
-            cached_embedding: [batch, hidden_size], optional
+            cached_embedding: [batch, hidden_size], bypasses the text backbone
+            signal_embedding: [batch, hidden_dim], bypasses the signal encoder
+            text_embedding:   [batch, hidden_dim], bypasses the text encoder
+            text_available:   [batch] bool, forces deterministic text ablation
         Returns:
             logits: [batch, num_classes]
         """
+        if self.mode == "fusion" and (
+            (signal_embedding is None) != (text_embedding is None)
+        ):
+            raise ValueError(
+                "signal_embedding and text_embedding must be provided together."
+            )
+        
         if self.mode == "signal_only":
-            emb = self.signal_encoder(signal)
+            emb = signal_embedding if signal_embedding is not None else self.signal_encoder(signal)
 
         elif self.mode == "text_only":
-            emb = self.text_encoder(input_ids, attention_mask, cached_embedding)
+            emb = text_embedding if text_embedding is not None else self.text_encoder(input_ids, attention_mask, cached_embedding)
 
         else:  # fusion
-            sig_emb = self.signal_encoder(signal)
-            txt_emb = self.text_encoder(input_ids, attention_mask, cached_embedding)
-            emb = self.fusion(sig_emb, txt_emb)
+            sig_emb = signal_embedding if signal_embedding is not None else self.signal_encoder(signal)
+            txt_emb = text_embedding if text_embedding is not None else self.text_encoder(input_ids, attention_mask, cached_embedding)
+            emb = self.fusion(
+                sig_emb,
+                txt_emb,
+                text_available=text_available,
+            )
 
         return self.classifier(emb)

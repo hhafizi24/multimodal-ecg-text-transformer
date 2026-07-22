@@ -1,9 +1,7 @@
 """
-Training loop for all three model stages.
+Training utilities for multimodal ECG classification.
 
-Designed for experiments with configs instantiated directly as
-Python objects. Handles MLflow logging, checkpointing, and learning-rate
-scheduling in one reusable training entry point.
+Provides MLflow logging, checkpointing, scheduling, and early stopping.
 """
 
 import json
@@ -42,10 +40,9 @@ def train(
     run_notes: str | None = None,
 ) -> Path:
     """
-    Run the full training loop for one stage.
+    Train a model and return the best checkpoint path.
 
-    Logs per-epoch metrics to MLflow, saves the best checkpoint by val macro F1,
-    and returns the path to the best checkpoint.
+    Checkpoints are selected by validation macro F1.
 
     Args:
         model:        Instantiated MultimodalECGClassifier.
@@ -115,7 +112,7 @@ def train(
 
     mlflow.set_experiment(train_cfg.experiment_name)
     with mlflow.start_run(run_name=train_cfg.run_name):
-        # Log experiment settings so runs can be compared and reproduced from MLflow.
+        # Log configuration and data settings
         aug = getattr(train_loader.dataset, "augmentation", None)
 
         params = {
@@ -144,27 +141,40 @@ def train(
             total_loss = 0.0
 
             for batch in train_loader:
-                signal = batch["signal"].to(device)
                 labels = batch["label"].to(device)
 
-                if "text_embedding" in batch:
+                if "signal_embedding" in batch:
+                    signal, input_ids, attention_mask, cached_embedding = None, None, None, None
+                    signal_embedding = batch["signal_embedding"].to(device)
+                    text_embedding   = batch["text_embedding"].to(device)
+                elif "text_embedding" in batch:
+                    signal = batch["signal"].to(device)
                     input_ids, attention_mask = None, None
                     cached_embedding = batch["text_embedding"].to(device)
+                    signal_embedding, text_embedding = None, None
                 else:
-                    input_ids        = batch["input_ids"].to(device)
-                    attention_mask   = batch["attention_mask"].to(device)
-                    cached_embedding = None
+                    signal         = batch["signal"].to(device)
+                    input_ids      = batch["input_ids"].to(device)
+                    attention_mask = batch["attention_mask"].to(device)
+                    cached_embedding, signal_embedding, text_embedding = None, None, None
 
                 optimizer.zero_grad(set_to_none=True)
 
                 with autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
-                    logits = model(signal, input_ids, attention_mask, cached_embedding)
-                    loss   = criterion(logits, labels)
+                    logits = model(
+                        signal=signal,
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        cached_embedding=cached_embedding,
+                        signal_embedding=signal_embedding,
+                        text_embedding=text_embedding,
+                    )
+                    loss = criterion(logits, labels)
 
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
 
-                # Gradient clipping — stabilizes training without tuning LR aggressively
+                # Clip trainable gradients
                 nn.utils.clip_grad_norm_(
                     filter(lambda p: p.requires_grad, model.parameters()), max_norm=1.0
                 )
@@ -198,7 +208,7 @@ def train(
                 },
                 step=epoch,
             )
-            # Validation macro F1 improved — reset patience and save checkpoint.
+            # Save the best checkpoint by validation macro F1
             if val_metrics["macro_f1"] > best_val_f1:
                 best_val_f1 = val_metrics["macro_f1"]
                 best_val_auc = val_metrics["macro_auc"]
@@ -229,8 +239,6 @@ def train(
                 log.info("  ↳ New best checkpoint saved (val macro F1: %.4f)", best_val_f1)
 
             else:
-                # No improvement in validation macro F1 — increment patience counter
-                # and stop training once patience is reached.
                 epochs_without_improvement += 1
 
                 if (

@@ -1,11 +1,7 @@
 """
-PyTorch datasets and DataLoader factories for preprocessed PTB-XL splits.
+Datasets and DataLoader factories for preprocessed PTB-XL splits.
 
-Signals are already normalized on disk. Text inputs are provided either
-through on-demand tokenization or precomputed frozen-backbone CLS features.
-
-Augmentation is applied at the sample level during training only; validation
-and test loaders always receive unmodified signals.
+Supports raw multimodal inputs and cached encoder features.
 """
 
 import json
@@ -17,18 +13,11 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 
-# Apply augmentation only to selected minority classes.
-# The target classes can be adjusted as experiments evolve.
-
 class ECGAugmentation:
     """
-    Stochastic augmentation pipeline for normalized ECG signals.
+    Apply stochastic noise, amplitude scaling, and time shifts to ECG signals.
 
-    Each transform is applied independently with probability p, so the model
-    sees a random mix of original and augmented versions across epochs rather
-    than always seeing the same transformed version of every minority sample.
-
-    All transforms operate on numpy arrays of shape [1000, 12].
+    Transforms operate independently on arrays with shape [1000, 12].
     """
 
     def __init__(
@@ -41,11 +30,11 @@ class ECGAugmentation:
     ):
         """
         Args:
-            noise_std:             Std of Gaussian noise relative to signal std.
-                                   0.05 means noise is 5% of the signal's own std.
-            amplitude_scale_range: Uniform range for amplitude scaling factor.
-            time_shift_max:        Maximum timesteps to shift in either direction.
-            p:                     Probability of applying each individual transform.
+            augment_classes: Labels eligible for augmentation.
+            noise_std: Gaussian noise scale relative to signal variation.
+            amplitude_scale_range: Range used for amplitude scaling.
+            time_shift_max: Maximum temporal shift in either direction.
+            p: Independent probability of applying each transform.
         """
         self.augment_classes = augment_classes
         self.noise_std             = noise_std
@@ -64,22 +53,15 @@ class ECGAugmentation:
         return signal
 
     def _add_noise(self, signal: np.ndarray) -> np.ndarray:
-        # Scale noise to the signal's own std so it's meaningful regardless
-        # of amplitude. Simulates electrode contact noise and muscle artifact.
         std = signal.std() + 1e-8
         noise = np.random.normal(0, self.noise_std * std, signal.shape).astype(np.float32)
         return signal + noise
 
     def _scale_amplitude(self, signal: np.ndarray) -> np.ndarray:
-        # Simulates variability in lead placement and patient body habitus.
-        # Morphology is preserved — only the scale changes.
         scale = np.random.uniform(*self.amplitude_scale_range)
         return (signal * scale).astype(np.float32)
 
     def _time_shift(self, signal: np.ndarray) -> np.ndarray:
-        # Rolls the signal along the time axis by a random number of steps.
-        # Wrap-around is acceptable here because small shifts preserve
-        # waveform morphology and the encoder aggregates over the sequence.
         shift = np.random.randint(-self.time_shift_max, self.time_shift_max)
         return np.roll(signal, shift, axis=0).astype(np.float32)
 
@@ -94,12 +76,10 @@ class ECGTextDataset(Dataset):
     ):
         """
         Args:
-            split_dir:     Path to one of data/processed/{train,val,test}.
-            tokenizer:     Initialized HuggingFace tokenizer.
-            max_text_length: Token sequence length passed to the tokenizer.
-            augmentation:  ECGAugmentation instance or None. When provided,
-                           augmentation is applied only to samples whose label
-                           is in AUGMENT_CLASSES. Pass None for val/test.
+            split_dir: Directory containing a processed dataset split.
+            tokenizer: Initialized Hugging Face tokenizer.
+            max_text_length: Maximum tokenized report length.
+            augmentation: Optional ECG augmentation pipeline.
         """
         split_dir = Path(split_dir)
 
@@ -121,11 +101,9 @@ class ECGTextDataset(Dataset):
         return len(self.labels)
 
     def __getitem__(self, idx: int) -> dict:
-        signal = self.signals[idx].copy()  # copy so augmentation doesn't mutate the cache
+        signal = self.signals[idx].copy()  # Avoid modifying the loaded array
         label  = int(self.labels[idx])
 
-        # Augmentation applies only to minority classes and only during training.
-        # Val/test datasets are constructed with augmentation=None.
         if (
             self.augmentation is not None
             and label in self.augmentation.augment_classes
@@ -150,11 +128,12 @@ class ECGTextDataset(Dataset):
             "label":          label_tensor,
         }
     
+    
 class CachedEmbeddingDataset(Dataset):
     """
-    Same signal loading and augmentation as ECGTextDataset, but the text
-    branch is a precomputed CLS feature instead of tokenized input. Requires
-    the frozen backbone to stay frozen — see scripts/precompute_text_features.py.
+    Load raw ECG signals with precomputed text-backbone features.
+
+    Cached features are valid only while the text backbone remains frozen.
     """
 
     def __init__(
@@ -219,13 +198,63 @@ def make_cached_dataloader(
     )
 
 
+class CachedFusionDataset(Dataset):
+    """
+    Load paired signal and text embeddings for frozen-encoder fusion training.
+    """
+
+    def __init__(
+        self,
+        labels_dir: str,
+        signal_embedding_path: str,
+        text_embedding_path: str,
+    ):
+        self.labels = np.load(Path(labels_dir) / "labels.npy")
+        self.signal_embeddings = np.load(signal_embedding_path)
+        self.text_embeddings = np.load(text_embedding_path)
+
+        assert len(self.labels) == len(self.signal_embeddings) == len(self.text_embeddings), (
+            "Mismatch between labels, signal embeddings, and text embeddings — re-run precompute script."
+        )
+
+    def __len__(self) -> int:
+        return len(self.labels)
+
+    def __getitem__(self, idx: int) -> dict:
+        return {
+            "signal_embedding": torch.from_numpy(self.signal_embeddings[idx]).float(),
+            "text_embedding":   torch.from_numpy(self.text_embeddings[idx]).float(),
+            "label":            torch.tensor(int(self.labels[idx]), dtype=torch.long),
+        }
+
+
+def make_cached_fusion_dataloader(
+    labels_dir: str,
+    signal_embedding_path: str,
+    text_embedding_path: str,
+    batch_size: int = 32,
+    shuffle: bool = False,
+    num_workers: int = 2,
+    seed: int = 42,
+) -> DataLoader:
+    dataset = CachedFusionDataset(labels_dir, signal_embedding_path, text_embedding_path)
+
+    generator = torch.Generator()
+    generator.manual_seed(seed)
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=num_workers,
+        pin_memory=True,
+        worker_init_fn=_worker_init_fn,
+        generator=generator,
+    )
+
+
 def _worker_init_fn(worker_id: int) -> None:
     """
-    Initialize RNG state for a DataLoader worker.
-
-    PyTorch derives each worker seed from the DataLoader generator. The same
-    seed is applied to NumPy and Python's random module so sample-level
-    augmentation remains deterministic across worker processes.
+    Seed NumPy and Python RNGs for a DataLoader worker.
     """
     worker_seed = torch.initial_seed() % (2**32)
     np.random.seed(worker_seed)

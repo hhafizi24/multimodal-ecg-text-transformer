@@ -1,8 +1,7 @@
 """
-Evaluation utilities for validation and final test-set analysis.
+Evaluation utilities for validation and test-set analysis.
 
-Provides per-epoch validation metrics, macro ROC-AUC, per-class F1 scores,
-classification reports, and confusion matrix export for stage-level comparisons.
+Includes classification metrics, reporting, and deterministic text ablation.
 """
 
 import json
@@ -37,12 +36,12 @@ def evaluate(
     loader: DataLoader,
     device: torch.device,
     criterion: nn.Module | None = None,
+    text_available: bool | None = None,
 ) -> dict:
     """
-    Run inference over a DataLoader and return loss and classification metrics.
+    Evaluate a model and return loss and classification metrics.
 
-    Used both during training (val loop) and for final test set evaluation.
-    criterion is optional — pass None to skip loss computation.
+    Set `text_available` to override text availability during fusion ablations.
     """
     model.eval()
     all_preds, all_labels, all_probs = [], [], []
@@ -51,19 +50,41 @@ def evaluate(
 
     with torch.inference_mode():
         for batch in loader:
-            signal = batch["signal"].to(device)
             labels = batch["label"].to(device)
 
-            if "text_embedding" in batch:
+            availability_mask = None
+            if text_available is not None:
+                availability_mask = torch.full(
+                    (labels.size(0),),
+                    text_available,
+                    dtype=torch.bool,
+                    device=device,
+                )
+            if "signal_embedding" in batch:
+                signal, input_ids, attention_mask, cached_embedding = None, None, None, None
+                signal_embedding = batch["signal_embedding"].to(device)
+                text_embedding   = batch["text_embedding"].to(device)
+            elif "text_embedding" in batch:
+                signal = batch["signal"].to(device)
                 input_ids, attention_mask = None, None
                 cached_embedding = batch["text_embedding"].to(device)
+                signal_embedding, text_embedding = None, None
             else:
-                input_ids        = batch["input_ids"].to(device)
-                attention_mask   = batch["attention_mask"].to(device)
-                cached_embedding = None
+                signal         = batch["signal"].to(device)
+                input_ids      = batch["input_ids"].to(device)
+                attention_mask = batch["attention_mask"].to(device)
+                cached_embedding, signal_embedding, text_embedding = None, None, None
 
             with autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
-                logits = model(signal, input_ids, attention_mask, cached_embedding)
+                logits = model(
+                    signal=signal,
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    cached_embedding=cached_embedding,
+                    signal_embedding=signal_embedding,
+                    text_embedding=text_embedding,
+                    text_available=availability_mask,
+                )
             logits = logits.float()
             probs = torch.softmax(logits, dim=-1)
 
@@ -125,16 +146,18 @@ def evaluate_and_save(
     results_dir: str,
 ) -> dict:
     """
-    Full evaluation for a single stage: computes metrics, saves confusion matrix
-    figure, and returns the metrics dict. Called once per stage during Phase 10.
+    Evaluate a model and save its metrics and confusion matrix.
 
     Args:
-        model:       Trained model for this stage.
-        loader:      Test DataLoader.
-        device:      Inference device.
-        stage_name:  e.g. "stage_a_signal_only" — used in filenames and titles.
-        figures_dir: Where to write the confusion matrix PNG.
-        results_dir: Where to write per-stage metrics JSON.
+        model: Model to evaluate.
+        loader: Evaluation DataLoader.
+        device: Inference device.
+        stage_name: Identifier used in output filenames and figure titles.
+        figures_dir: Directory for confusion matrix figures.
+        results_dir: Directory for metric files.
+
+    Returns:
+        Evaluation metrics.
     """
     metrics = evaluate(model, loader, device)
 

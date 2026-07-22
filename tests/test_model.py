@@ -253,3 +253,109 @@ def test_logits_are_raw_not_softmaxed():
     row_sums = logits.sum(dim=-1)
 
     assert not torch.allclose(row_sums, torch.ones(BATCH), atol=1e-3)
+
+
+def make_fusion_embeddings():
+    signal_embedding = torch.randn(BATCH, HIDDEN_DIM)
+    text_embedding = torch.randn(BATCH, HIDDEN_DIM)
+    return signal_embedding, text_embedding
+
+
+def test_freeze_encoders_freezes_params_and_eval_mode():
+    cfg = make_cfg("fusion")
+    cfg.freeze_encoders = True
+    model = MultimodalECGClassifier(cfg)
+
+    assert not any(p.requires_grad for p in model.signal_encoder.parameters())
+    assert not any(p.requires_grad for p in model.text_encoder.parameters())
+    assert any(p.requires_grad for p in model.fusion.parameters())
+    assert any(p.requires_grad for p in model.classifier.parameters())
+
+    model.train()
+    assert not model.signal_encoder.training
+    assert not model.text_encoder.training
+    assert model.fusion.training
+    assert model.classifier.training
+
+
+def test_invalid_text_modality_dropout_p_raises():
+    cfg = make_cfg("fusion")
+    cfg.text_modality_dropout_p = 1.5
+
+    with pytest.raises(ValueError):
+        MultimodalECGClassifier(cfg)
+
+
+def test_text_modality_dropout_full_drop_ignores_text():
+    cfg = make_cfg("fusion")
+    cfg.text_modality_dropout_p = 1.0
+    model = MultimodalECGClassifier(cfg)
+    model.train()
+
+    signal_embedding, text_a = make_fusion_embeddings()
+    _, text_b = make_fusion_embeddings()
+
+    with torch.no_grad():
+        out_a = model(signal_embedding=signal_embedding, text_embedding=text_a)
+        out_b = model(signal_embedding=signal_embedding, text_embedding=text_b)
+
+    assert torch.allclose(out_a, out_b)
+
+
+def test_eval_mode_never_drops_text():
+    cfg = make_cfg("fusion")
+    cfg.text_modality_dropout_p = 1.0
+    model = MultimodalECGClassifier(cfg)
+    model.eval()
+
+    signal_embedding, text_a = make_fusion_embeddings()
+    _, text_b = make_fusion_embeddings()
+
+    with torch.no_grad():
+        out_a = model(signal_embedding=signal_embedding, text_embedding=text_a)
+        out_b = model(signal_embedding=signal_embedding, text_embedding=text_b)
+
+    assert not torch.allclose(out_a, out_b)
+
+
+def test_explicit_text_available_mask_ablates_deterministically():
+    cfg = make_cfg("fusion")
+    model = MultimodalECGClassifier(cfg)
+    model.eval()
+
+    signal_embedding, text_a = make_fusion_embeddings()
+    _, text_b = make_fusion_embeddings()
+    mask_all_false = torch.zeros(BATCH, dtype=torch.bool)
+
+    with torch.no_grad():
+        out_a = model(signal_embedding=signal_embedding, text_embedding=text_a, text_available=mask_all_false)
+        out_b = model(signal_embedding=signal_embedding, text_embedding=text_b, text_available=mask_all_false)
+
+    assert torch.allclose(out_a, out_b)
+
+
+def test_fusion_query_projection_receives_gradient():
+    cfg = make_cfg("fusion")
+    model = MultimodalECGClassifier(cfg)
+    model.train()
+
+    signal_embedding, text_embedding = make_fusion_embeddings()
+    logits = model(
+        signal_embedding=signal_embedding,
+        text_embedding=text_embedding,
+    )
+    logits.sum().backward()
+
+    grad = model.fusion.cross_attn.in_proj_weight.grad
+    query_grad = grad[: model.fusion.cross_attn.embed_dim]
+
+    assert torch.any(query_grad != 0)
+
+
+def test_signal_and_text_embedding_must_be_paired():
+    cfg = make_cfg("fusion")
+    model = MultimodalECGClassifier(cfg)
+    signal_embedding, _ = make_fusion_embeddings()
+
+    with pytest.raises(ValueError):
+        model(signal_embedding=signal_embedding)
