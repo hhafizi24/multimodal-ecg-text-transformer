@@ -89,16 +89,23 @@ def train(
         return value
 
     if train_cfg.loss_fn == "cross_entropy":
-        criterion = nn.CrossEntropyLoss(weight=class_weights)
-        
-    elif train_cfg.loss_fn == "focal":
-        criterion = FocalLoss(
-            gamma=train_cfg.focal_gamma, 
-            weight=class_weights
+        training_criterion = nn.CrossEntropyLoss(
+            weight=class_weights,
+            label_smoothing=train_cfg.label_smoothing,
+        )
+        validation_criterion = nn.CrossEntropyLoss(
+            weight=class_weights,
         )
 
+    elif train_cfg.loss_fn == "focal":
+        training_criterion = FocalLoss(
+            gamma=train_cfg.focal_gamma,
+            weight=class_weights,
+        )
+        validation_criterion = training_criterion
+
     else:
-        raise ValueError(f"Unknown loss function: {train_cfg.loss_fn}")
+        raise ValueError(f"Unsupported loss function: {train_cfg.loss_fn}")
 
     checkpoint_dir = Path(train_cfg.checkpoint_dir)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -169,7 +176,7 @@ def train(
                         signal_embedding=signal_embedding,
                         text_embedding=text_embedding,
                     )
-                    loss = criterion(logits, labels)
+                    loss = training_criterion(logits, labels)
 
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
@@ -186,7 +193,12 @@ def train(
             scheduler.step()
 
             train_loss = total_loss / len(train_loader)
-            val_metrics = evaluate(model, val_loader, device, criterion)
+            val_metrics = evaluate(
+                model,
+                val_loader,
+                device,
+                validation_criterion,
+            )
 
             log.info(
                 "Epoch %d/%d | train_loss=%.4f | val_loss=%.4f | val_macro_f1=%.4f",

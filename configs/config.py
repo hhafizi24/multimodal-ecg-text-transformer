@@ -99,7 +99,11 @@ class TrainingConfig:
     early_stopping_patience: int | None = 5
 
     loss_fn: Literal["cross_entropy", "focal"] = "cross_entropy"
-    # Used only when loss_fn="focal"
+
+    # Used only with cross-entropy
+    label_smoothing: float = 0.0
+
+    # Used only with focal loss
     focal_gamma: float = 2.0
 
     # Controls initialization, shuffling, augmentation, and dropout RNGs
