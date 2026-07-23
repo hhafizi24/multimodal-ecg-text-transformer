@@ -182,6 +182,23 @@ def evaluate_and_save(
     return metrics
 
 
+@torch.inference_mode()
+def collect_logits(model: nn.Module, loader: DataLoader, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
+    """Run one inference pass over cached fusion embeddings and return logits and labels."""
+    model.eval()
+    all_logits, all_labels = [], []
+
+    for batch in loader:
+        logits = model(
+            signal_embedding=batch["signal_embedding"].to(device),
+            text_embedding=batch["text_embedding"].to(device),
+        )
+        all_logits.append(logits.cpu())
+        all_labels.append(batch["label"])
+
+    return torch.cat(all_logits), torch.cat(all_labels)
+
+
 def _collect_predictions(
     model: nn.Module,
     loader: DataLoader,
