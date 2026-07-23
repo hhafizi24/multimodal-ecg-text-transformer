@@ -383,6 +383,7 @@ def evaluate_final(
     results = {
         "raw": raw,
         "adjusted": adjusted,
+        "logit_bias": bias.tolist(),
         "confidence_bins": confidence_bin_analysis(logits, labels),
         "per_example_predictions_path": str(predictions_path),
     }
