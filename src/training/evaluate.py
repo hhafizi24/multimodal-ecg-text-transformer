@@ -4,6 +4,7 @@ Evaluation utilities for validation and test-set analysis.
 Includes classification metrics, reporting, and deterministic text ablation.
 """
 
+import csv
 import json
 import logging
 from pathlib import Path
@@ -307,6 +308,52 @@ def confidence_bin_analysis(
     return bins
 
 
+def export_per_example_predictions(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    bias: torch.Tensor,
+    stage_name: str,
+    results_dir: str,
+) -> Path:
+    """Save per-example predictions and confidence values to CSV."""
+    raw_probs = torch.softmax(logits, dim=-1)
+    raw_conf, raw_preds = raw_probs.max(dim=-1)
+
+    adjusted_probs = torch.softmax(logits + bias, dim=-1)
+    adjusted_conf, adjusted_preds = adjusted_probs.max(dim=-1)
+
+    out_path = Path(results_dir) / f"{stage_name}_per_example.csv"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(out_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+
+        header = [
+            "sample_index",
+            "true_label",
+            "raw_pred",
+            "raw_confidence",
+            "adjusted_pred",
+            "adjusted_confidence",
+        ]
+        header += [f"raw_prob_{name}" for name in LABEL_NAMES]
+        writer.writerow(header)
+
+        for i in range(len(labels)):
+            row = [
+                i,
+                LABEL_NAMES[labels[i].item()],
+                LABEL_NAMES[raw_preds[i].item()],
+                f"{raw_conf[i].item():.6f}",
+                LABEL_NAMES[adjusted_preds[i].item()],
+                f"{adjusted_conf[i].item():.6f}",
+            ]
+            row += [f"{prob:.6f}" for prob in raw_probs[i].tolist()]
+            writer.writerow(row)
+
+    return out_path
+
+
 def evaluate_final(
     model: nn.Module,
     loader: DataLoader,
@@ -325,10 +372,19 @@ def evaluate_final(
     _save_confusion_matrix(confusion_matrix(labels.numpy(), raw["preds"]), f"{stage_name}_raw", figures_dir)
     _save_confusion_matrix(confusion_matrix(labels.numpy(), adjusted["preds"]), f"{stage_name}_adjusted", figures_dir)
 
+    predictions_path = export_per_example_predictions(
+        logits,
+        labels,
+        bias,
+        stage_name,
+        results_dir,
+    )
+
     results = {
         "raw": raw,
         "adjusted": adjusted,
         "confidence_bins": confidence_bin_analysis(logits, labels),
+        "per_example_predictions_path": str(predictions_path),
     }
 
     results_path = Path(results_dir) / f"{stage_name}_final_metrics.json"
