@@ -199,6 +199,73 @@ def collect_logits(model: nn.Module, loader: DataLoader, device: torch.device) -
     return torch.cat(all_logits), torch.cat(all_labels)
 
 
+def metrics_from_logits(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    bias: torch.Tensor | None = None,
+) -> dict:
+    """Compute classification metrics with an optional class-specific bias."""
+    adjusted_logits = logits + bias if bias is not None else logits
+    probs = torch.softmax(adjusted_logits, dim=-1)
+    preds = adjusted_logits.argmax(dim=-1)
+
+    labels_np = labels.numpy()
+    preds_np = preds.numpy()
+    probs_np = probs.numpy()
+
+    per_class = f1_score(
+        labels_np,
+        preds_np,
+        average=None,
+        zero_division=0,
+    )
+
+    try:
+        macro_auc = roc_auc_score(
+            labels_np,
+            probs_np,
+            multi_class="ovr",
+            average="macro",
+            labels=list(range(len(LABEL_NAMES))),
+        )
+    except ValueError:
+        macro_auc = float("nan")
+
+    return {
+        "accuracy": float(accuracy_score(labels_np, preds_np)),
+        "macro_precision": float(
+            precision_score(
+                labels_np,
+                preds_np,
+                average="macro",
+                zero_division=0,
+            )
+        ),
+        "macro_recall": float(
+            recall_score(
+                labels_np,
+                preds_np,
+                average="macro",
+                zero_division=0,
+            )
+        ),
+        "macro_f1": float(
+            f1_score(
+                labels_np,
+                preds_np,
+                average="macro",
+                zero_division=0,
+            )
+        ),
+        "macro_auc": float(macro_auc),
+        "per_class_f1": {
+            LABEL_NAMES[i]: float(per_class[i])
+            for i in range(len(LABEL_NAMES))
+        },
+        "preds": preds_np.tolist(),
+    }
+
+
 def _collect_predictions(
     model: nn.Module,
     loader: DataLoader,
