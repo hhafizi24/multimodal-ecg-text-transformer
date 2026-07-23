@@ -285,6 +285,60 @@ def _collect_predictions(
     return all_preds, all_labels
 
 
+def confidence_bin_analysis(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    bin_edges: tuple[float, ...] = (0.0, 0.5, 0.7, 0.85, 0.95, 1.0),
+) -> list[dict]:
+    """Bucket predictions by raw softmax confidence and report accuracy per bin."""
+    probs = torch.softmax(logits, dim=-1)
+    confidences, preds = probs.max(dim=-1)
+    correct = preds == labels
+
+    bins = []
+    for lo, hi in zip(bin_edges[:-1], bin_edges[1:]):
+        mask = (confidences >= lo) & (confidences <= hi if hi == bin_edges[-1] else confidences < hi)
+        count = int(mask.sum().item())
+        bins.append({
+            "range": f"[{lo:.2f}, {hi:.2f}]",
+            "count": count,
+            "accuracy": float(correct[mask].float().mean()) if count > 0 else None,
+        })
+    return bins
+
+
+def evaluate_final(
+    model: nn.Module,
+    loader: DataLoader,
+    device: torch.device,
+    bias: torch.Tensor,
+    stage_name: str,
+    figures_dir: str,
+    results_dir: str,
+) -> dict:
+    """Collect logits once and report raw and bias-adjusted metrics."""
+    logits, labels = collect_logits(model, loader, device)
+
+    raw = metrics_from_logits(logits, labels)
+    adjusted = metrics_from_logits(logits, labels, bias)
+
+    _save_confusion_matrix(confusion_matrix(labels.numpy(), raw["preds"]), f"{stage_name}_raw", figures_dir)
+    _save_confusion_matrix(confusion_matrix(labels.numpy(), adjusted["preds"]), f"{stage_name}_adjusted", figures_dir)
+
+    results = {
+        "raw": raw,
+        "adjusted": adjusted,
+        "confidence_bins": confidence_bin_analysis(logits, labels),
+    }
+
+    results_path = Path(results_dir) / f"{stage_name}_final_metrics.json"
+    results_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(results_path, "w") as f:
+        json.dump(results, f, indent=2)
+
+    return results
+
+
 def _save_confusion_matrix(cm: np.ndarray, stage_name: str, figures_dir: str) -> None:
     figures_dir = Path(figures_dir)
     figures_dir.mkdir(parents=True, exist_ok=True)
