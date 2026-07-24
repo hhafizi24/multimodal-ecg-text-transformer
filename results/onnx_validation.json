@@ -1,0 +1,50 @@
+{
+  "onnx_opset_version": 14,
+  "onnx_package_version": "1.21.0",
+  "onnxruntime_version": "1.25.1",
+  "input_schema": [
+    {
+      "name": "signal",
+      "shape": [
+        "batch",
+        1000,
+        12
+      ]
+    },
+    {
+      "name": "text_embedding",
+      "shape": [
+        "batch",
+        256
+      ]
+    },
+    {
+      "name": "text_available",
+      "shape": [
+        "batch"
+      ]
+    }
+  ],
+  "output_schema": [
+    {
+      "name": "logits",
+      "shape": [
+        "batch",
+        5
+      ]
+    }
+  ],
+  "fp32_onnx_checker_passed": true,
+  "int8_onnx_checker_passed": true,
+  "fp32_macro_f1": 0.7837797067745795,
+  "fp32_macro_auc": 0.9553823791262841,
+  "int8_macro_f1": 0.7824191739943204,
+  "int8_macro_auc": 0.9550997191081946,
+  "f1_delta": 0.0013605327802591605,
+  "auc_delta": 0.00028266001808952,
+  "f1_tolerance": 0.01,
+  "auc_tolerance": 0.01,
+  "accepted": true,
+  "fp32_artifact_size_mb": 11.489832878112793,
+  "int8_artifact_size_mb": 3.6808900833129883
+}
