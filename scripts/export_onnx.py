@@ -16,11 +16,8 @@ import argparse
 import logging
 from pathlib import Path
 
-import numpy as np
-import onnxruntime as ort
 import torch
 import torch.nn as nn
-from onnxruntime.quantization import QuantType, quantize_dynamic
 
 from configs.config import ExportConfig, ModelConfig
 from src.models.classifier import ClassificationHead
@@ -108,6 +105,7 @@ def export(cfg: ExportConfig) -> None:
 
     _verify_onnx_matches_pytorch(exportable, cfg.onnx_path, model_cfg, trials_per_case=10)
 
+    from onnxruntime.quantization import QuantType, quantize_dynamic
     log.info("Applying dynamic quantization...")
     quantize_dynamic(
         cfg.onnx_path,
@@ -129,6 +127,9 @@ def _verify_onnx_matches_pytorch(
 
     Raises if the maximum absolute difference exceeds ``atol``.
     """
+    import numpy as np
+    import onnxruntime as ort
+
     session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
 
     text_available_patterns = {
