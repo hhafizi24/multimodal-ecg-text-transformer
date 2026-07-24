@@ -1,0 +1,69 @@
+{
+  "scope": "fusion_exported_inference_subgraph",
+  "protocol": {
+    "sample_split": "validation",
+    "batch_size": 1,
+    "warmup_runs": 20,
+    "timed_runs": 200,
+    "num_threads": 1
+  },
+  "model_backends": {
+    "pytorch": {
+      "artifact_size_mb": 11.36477279663086,
+      "latency": {
+        "p50_ms": 9.779968999964694,
+        "p95_ms": 11.006717799818942,
+        "mean_ms": 9.95981916999881,
+        "std_ms": 0.6840940403399897
+      },
+      "num_threads": 1,
+      "environment": {
+        "hardware": "x86_64",
+        "os": "Linux 6.6.122+",
+        "python_version": "3.12.13",
+        "torch_version": "2.11.0+cpu",
+        "onnx_version": "1.22.0",
+        "onnxruntime_version": "1.27.0"
+      },
+      "peak_rss_mb": 672.62890625
+    },
+    "onnx_fp32": {
+      "artifact_size_mb": 11.489832878112793,
+      "latency": {
+        "p50_ms": 7.0543814999837196,
+        "p95_ms": 8.058305349925377,
+        "mean_ms": 7.195287659992573,
+        "std_ms": 0.47169914245873407
+      },
+      "num_threads": 1,
+      "environment": {
+        "hardware": "x86_64",
+        "os": "Linux 6.6.122+",
+        "python_version": "3.12.13",
+        "torch_version": "2.11.0+cpu",
+        "onnx_version": "1.22.0",
+        "onnxruntime_version": "1.27.0"
+      },
+      "peak_rss_mb": 87.38671875
+    },
+    "onnx_int8": {
+      "artifact_size_mb": 3.6808900833129883,
+      "latency": {
+        "p50_ms": 15.646714499894188,
+        "p95_ms": 18.317998650024933,
+        "mean_ms": 16.024096945013753,
+        "std_ms": 1.523393294651233
+      },
+      "num_threads": 1,
+      "environment": {
+        "hardware": "x86_64",
+        "os": "Linux 6.6.122+",
+        "python_version": "3.12.13",
+        "torch_version": "2.11.0+cpu",
+        "onnx_version": "1.22.0",
+        "onnxruntime_version": "1.27.0"
+      },
+      "peak_rss_mb": 75.515625
+    }
+  }
+}

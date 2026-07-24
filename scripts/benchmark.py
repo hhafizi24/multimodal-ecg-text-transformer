@@ -164,6 +164,13 @@ def plot_benchmark_comparison(results: dict, output_path: str) -> None:
     import matplotlib.pyplot as plt
 
     backends = list(results.keys())
+    display_names = {
+        "pytorch": "PyTorch",
+        "onnx_fp32": "ONNX FP32",
+        "onnx_int8": "ONNX INT8",
+    }
+    labels = [display_names[b] for b in backends]
+
     p50 = [results[b]["latency"]["p50_ms"] for b in backends]
     p95 = [results[b]["latency"]["p95_ms"] for b in backends]
     peak_rss = [results[b]["peak_rss_mb"] for b in backends]
@@ -173,29 +180,46 @@ def plot_benchmark_comparison(results: dict, output_path: str) -> None:
     x = list(range(len(backends)))
     width = 0.35
 
-    axes[0].bar([i - width / 2 for i in x], p50, width, label="p50")
-    axes[0].bar([i + width / 2 for i in x], p95, width, label="p95")
+    p50_bars = axes[0].bar(
+        [i - width / 2 for i in x],
+        p50,
+        width,
+        label="p50",
+    )
+    p95_bars = axes[0].bar(
+        [i + width / 2 for i in x],
+        p95,
+        width,
+        label="p95",
+    )
+    axes[0].bar_label(p50_bars, fmt="%.2f", padding=3)
+    axes[0].bar_label(p95_bars, fmt="%.2f", padding=3)
     axes[0].set_xticks(x)
-    axes[0].set_xticklabels(backends)
+    axes[0].set_xticklabels(labels)
     axes[0].set_ylabel("Latency (ms)")
     axes[0].set_title("Latency")
+    axes[0].set_ylim(0, max(p50 + p95) * 1.15)
     axes[0].legend()
 
-    axes[1].bar(x, peak_rss)
+    memory_bars = axes[1].bar(x, peak_rss)
+    axes[1].bar_label(memory_bars, fmt="%.1f", padding=3)
     axes[1].set_xticks(x)
-    axes[1].set_xticklabels(backends)
+    axes[1].set_xticklabels(labels)
     axes[1].set_ylabel("Peak RSS (MB)")
     axes[1].set_title("Peak Memory")
+    axes[1].set_ylim(0, max(peak_rss) * 1.12)
 
-    axes[2].bar(x, artifact_size)
+    size_bars = axes[2].bar(x, artifact_size)
+    axes[2].bar_label(size_bars, fmt="%.2f", padding=3)
     axes[2].set_xticks(x)
-    axes[2].set_xticklabels(backends)
+    axes[2].set_xticklabels(labels)
     axes[2].set_ylabel("Size (MB)")
     axes[2].set_title("Artifact Size")
+    axes[2].set_ylim(0, max(artifact_size) * 1.12)
 
     plt.tight_layout()
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=150)
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 
