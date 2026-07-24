@@ -263,8 +263,14 @@ def main():
     parser.add_argument("--warmup-runs", type=int, default=BenchmarkConfig.n_warmup_runs)
     parser.add_argument("--timed-runs", type=int, default=BenchmarkConfig.n_benchmark_runs)
     parser.add_argument("--num-threads", type=int, default=1)
-    parser.add_argument("--output-path", default="results/benchmark.json")
-    parser.add_argument("--figure-path", default="results/figures/benchmark_comparison.png")
+    parser.add_argument(
+        "--output-path",
+        default="results/benchmarks/apple_arm.json",
+    )
+    parser.add_argument(
+        "--figure-path",
+        default="results/figures/benchmarks/benchmark_comparison.png",
+    )
     args = parser.parse_args()
 
     if args.backend is None:

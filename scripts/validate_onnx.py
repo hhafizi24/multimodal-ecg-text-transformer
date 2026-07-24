@@ -63,7 +63,7 @@ def main():
     parser.add_argument("--int8-path", required=True)
     parser.add_argument("--f1-tolerance", type=float, default=0.01)
     parser.add_argument("--auc-tolerance", type=float, default=0.01)
-    parser.add_argument("--output-path", default="results/onnx_validation.json")
+    parser.add_argument("--output-path", default="results/onnx/validation.json")
     args = parser.parse_args()
 
     onnx.checker.check_model(onnx.load(args.fp32_path))

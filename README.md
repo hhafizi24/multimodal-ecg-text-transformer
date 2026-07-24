@@ -47,7 +47,7 @@ Stage C corrected 340 of Stage A's 602 errors and 176 of Stage B's 495 errors. O
 
 <p align="center">
   <img
-    src="results/figures/confusion_matrix_comparison.png"
+    src="results/figures/evaluation/confusion_matrix_comparison.png"
     alt="Held-out test confusion matrices"
     width="900"
   >
