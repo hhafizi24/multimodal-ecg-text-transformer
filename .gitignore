@@ -21,6 +21,10 @@ data/processed/
 # Models
 /models/
 
+# Hydra run artifacts
+outputs/
+multirun/
+
 # MLflow
 mlruns/
 
