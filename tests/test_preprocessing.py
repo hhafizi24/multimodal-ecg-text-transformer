@@ -1,9 +1,4 @@
-"""
-Unit tests for the preprocessing pipeline.
-
-These run against the processed output files, so preprocess_data.py must have
-been run before executing this test module.
-"""
+"""Tests for persisted preprocessing artifacts."""
 
 import json
 import os
@@ -13,6 +8,15 @@ import numpy as np
 import pytest
 
 PROCESSED_DIR = Path(os.environ.get("PROCESSED_DATA_DIR", "data/processed"))
+
+# Dataset-backed checks are skipped when preprocessing artifacts are unavailable
+required_artifact = PROCESSED_DIR / "train" / "signals.npy"
+if not required_artifact.exists():
+    pytest.skip(
+        "Processed PTB-XL artifacts are not available.",
+        allow_module_level=True,
+    )
+
 SPLITS = ["train", "val", "test"]
 NUM_LEADS = 12
 TIMESTEPS = 1000
@@ -23,22 +27,18 @@ def _split_dir(split: str) -> Path:
     return PROCESSED_DIR / split
 
 
-# Helpers 
-
 def load_split(split: str) -> tuple[np.ndarray, np.ndarray, list[str]]:
     d = _split_dir(split)
     signals = np.load(d / "signals.npy")
-    labels  = np.load(d / "labels.npy")
+    labels = np.load(d / "labels.npy")
     with open(d / "reports.json", encoding="utf-8") as f:
         reports = json.load(f)
     return signals, labels, reports
 
 
-# Shape and dtype tests
-
 @pytest.mark.parametrize("split", SPLITS)
 def test_signal_shape(split):
-    signals, labels, reports = load_split(split)
+    signals, _, _ = load_split(split)
     assert signals.ndim == 3
     assert signals.shape[1] == TIMESTEPS
     assert signals.shape[2] == NUM_LEADS
@@ -58,15 +58,13 @@ def test_labels_valid_range(split):
     assert labels.max() < NUM_CLASSES
 
 
-# Normalization
-
 def test_train_signals_approximately_normalized():
-    """Training signals should be close to zero mean, unit variance per channel."""
+    """Validate per-lead normalization of the training signals."""
     signals, _, _ = load_split("train")
-    # signals shape: [N, 1000, 12] — compute stats over N and timesteps
+    # Collapse record and time axes while preserving the lead dimension
     flat = signals.reshape(-1, NUM_LEADS)
     means = flat.mean(axis=0)
-    stds  = flat.std(axis=0)
+    stds = flat.std(axis=0)
     np.testing.assert_allclose(means, np.zeros(NUM_LEADS), atol=1e-2)
     np.testing.assert_allclose(stds, np.ones(NUM_LEADS), atol=3e-2)
 
@@ -78,31 +76,20 @@ def test_norm_stats_file_exists():
         stats = json.load(f)
     assert "mean" in stats and "std" in stats
     assert len(stats["mean"]) == NUM_LEADS
-    assert len(stats["std"])  == NUM_LEADS
+    assert len(stats["std"]) == NUM_LEADS
 
 
-# No data leakage between splits
-
-def test_no_patient_overlap_across_splits():
-    """
-    PTB-XL's strat_fold is designed to keep patients in a single split.
-    We verify this via ecg_ids — not patient IDs directly — but the fold
-    assignment guarantees it at the source.
-
-    This test checks that the ecg_id sets are disjoint across splits,
-    which confirms no record appears in more than one split.
-    """
+def test_no_record_overlap_across_splits():
+    """Verify that ECG records are unique across dataset splits."""
     id_sets = {}
     for split in SPLITS:
         ids = np.load(_split_dir(split) / "ecg_ids.npy")
         id_sets[split] = set(ids.tolist())
 
-    assert id_sets["train"].isdisjoint(id_sets["val"]),  "Train/val overlap"
+    assert id_sets["train"].isdisjoint(id_sets["val"]), "Train/val overlap"
     assert id_sets["train"].isdisjoint(id_sets["test"]), "Train/test overlap"
-    assert id_sets["val"].isdisjoint(id_sets["test"]),   "Val/test overlap"
+    assert id_sets["val"].isdisjoint(id_sets["test"]), "Val/test overlap"
 
-
-# Config snapshot
 
 def test_config_snapshot_exists_and_valid():
     path = PROCESSED_DIR / "config_snapshot.json"
@@ -114,15 +101,13 @@ def test_config_snapshot_exists_and_valid():
     assert "class_weights" in snap
     assert "likelihood_threshold" in snap
 
-    # Verify preprocessing configuration was recorded.
     assert "filter" in snap
     assert "apply_bandpass" in snap["filter"]
 
     assert len(snap["class_weights"]) == NUM_CLASSES
 
 
-# Reports
-
 @pytest.mark.parametrize("split", SPLITS)
 def test_reports_are_strings(split):
     _, _, reports = load_split(split)
+    assert all(isinstance(r, str) for r in reports)

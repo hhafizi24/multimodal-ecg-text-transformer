@@ -33,7 +33,7 @@ def make_cfg(mode: str) -> ModelConfig:
         transformer_num_heads=8,
         transformer_num_layers=2,  # use a smaller model to keep tests fast
         transformer_dropout=0.0,
-        text_model_name="GerMedBERT/medbert-512",
+        text_model_name="google/bert_uncased_L-2_H-128_A-2",
         text_projection_dim=HIDDEN_DIM,
         fusion_num_heads=8,
         num_classes=NUM_CLASSES,

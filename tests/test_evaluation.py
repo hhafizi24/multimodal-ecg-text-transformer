@@ -20,7 +20,7 @@ def make_cfg() -> ModelConfig:
         transformer_hidden_dim=HIDDEN_DIM,
         transformer_num_heads=4,
         transformer_num_layers=1,
-        text_model_name="GerMedBERT/medbert-512",
+        text_model_name="google/bert_uncased_L-2_H-128_A-2",
         text_projection_dim=HIDDEN_DIM,
         fusion_num_heads=4,
         num_classes=NUM_CLASSES,
