@@ -1,11 +1,4 @@
-"""
-Preprocessing pipeline for PTB-XL.
-
-Derives single-label diagnostic superclasses from scp_codes, assigns train/val/test
-splits using the dataset's strat_fold column, optionally applies zero-phase bandpass filtering, 
-computes normalization statistics from the training split, normalizes all waveforms, and saves
-processed splits alongside normalization statistics and a preprocessing config snapshot.
-"""
+"""Preprocess PTB-XL waveforms, reports, labels, and dataset splits."""
 
 import ast
 import json
@@ -21,31 +14,28 @@ from scipy.signal import butter, sosfiltfilt
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
 
-# Diagnostic superclass → integer label
 LABEL_MAP = {"NORM": 0, "MI": 1, "STTC": 2, "CD": 3, "HYP": 4}
 
-# strat_fold assignments per the PTB-XL benchmark protocol
+# Official PTB-XL fold assignments.
 FOLD_SPLITS = {
-    "train": list(range(1, 9)),   # folds 1–8
-    "val":   [9],
-    "test":  [10],
+    "train": list(range(1, 9)),
+    "val": [9],
+    "test": [10],
 }
 
 
 def load_scp_lookup(scp_path: str) -> pd.DataFrame:
-    """Return scp_statements filtered to diagnostic codes only."""
+    """Load diagnostic SCP-code metadata."""
     scp = pd.read_csv(scp_path, index_col=0)
     return scp[scp["diagnostic"] == 1.0]
 
 
-def derive_label(scp_codes_str: str, scp_lookup: pd.DataFrame, threshold: float = 0.5) -> str | None:
-    """
-    Map a raw scp_codes string to a single diagnostic superclass label.
-
-    Accumulates likelihood scores per superclass, then returns the dominant class
-    only if it clears the threshold. Returns None if the record is ambiguous or
-    contains no diagnostic codes.
-    """
+def derive_label(
+    scp_codes_str: str,
+    scp_lookup: pd.DataFrame,
+    threshold: float = 0.5,
+) -> str | None:
+    """Return the dominant diagnostic superclass when it meets the threshold."""
     try:
         codes = ast.literal_eval(scp_codes_str)
     except (ValueError, SyntaxError):
@@ -79,13 +69,7 @@ def load_waveform(
     raw_data_dir: str,
     bandpass_sos: np.ndarray | None = None,
 ) -> np.ndarray | None:
-    """
-    Load a 100 Hz waveform via wfdb and optionally apply bandpass filtering.
-
-    Returns a float32 array of shape [1000, 12], or None on error.
-    When provided, bandpass_sos is applied with sosfiltfilt to produce a
-    zero-phase filtered signal.
-    """
+    """Load and optionally filter a 100 Hz ECG waveform."""
     path = os.path.join(raw_data_dir, filename_lr)
     try:
         signal, _ = wfdb.rdsamp(path)
@@ -98,30 +82,45 @@ def load_waveform(
         if bandpass_sos is not None:
             signal = sosfiltfilt(bandpass_sos, signal, axis=0).astype(np.float32)
         return signal
-    except Exception as e:
-        log.warning("Failed to load %s: %s", filename_lr, e)
+    except Exception as exc:
+        log.warning("Failed to load %s: %s", filename_lr, exc)
         return None
 
 
 def compute_norm_stats(signals: list[np.ndarray]) -> dict:
-    """
-    Compute per-channel mean and std across all training waveforms.
-
-    Stats are fit on the training split only and applied to all splits.
-    Each channel is treated independently — shape of each signal is [1000, 12].
-    """
-    stacked = np.concatenate(signals, axis=0)  # [N*1000, 12]
-    means = stacked.mean(axis=0).tolist()       # [12]
-    stds  = stacked.std(axis=0).tolist()        # [12]
+    """Compute per-lead normalization statistics."""
+    stacked = np.concatenate(signals, axis=0)
+    means = stacked.mean(axis=0).tolist()
+    stds = stacked.std(axis=0).tolist()
     return {"mean": means, "std": stds}
 
 
-def normalize(signal: np.ndarray, mean: list[float], std: list[float]) -> np.ndarray:
-    """Apply per-channel z-score normalization using precomputed training statistics."""
+def build_bandpass_filter(
+    low_hz: float,
+    high_hz: float,
+    order: int,
+    sampling_rate: int,
+) -> np.ndarray:
+    """Build second-order-section coefficients for the bandpass filter."""
+    return butter(
+        N=order,
+        Wn=[low_hz, high_hz],
+        btype="bandpass",
+        fs=sampling_rate,
+        output="sos",
+    )
+
+
+def normalize(
+    signal: np.ndarray,
+    mean: list[float] | np.ndarray,
+    std: list[float] | np.ndarray,
+) -> np.ndarray:
+    """Apply per-lead z-score normalization."""
     mean_arr = np.array(mean, dtype=np.float32)
-    std_arr  = np.array(std,  dtype=np.float32)
-    # Avoid division by zero for flat channels
-    std_arr  = np.where(std_arr < 1e-8, 1.0, std_arr)
+    std_arr = np.array(std, dtype=np.float32)
+    # Guard against zero-variance leads.
+    std_arr = np.where(std_arr < 1e-8, 1.0, std_arr)
     return (signal - mean_arr) / std_arr
 
 
@@ -135,24 +134,18 @@ def run(
     filter_order: int = 4,
     sampling_rate: int = 100,
 ) -> None:
-    """
-    Execute the full preprocessing pipeline and write processed splits to disk.
-
-    Filtering and normalization are applied in that order — filter on raw signal,
-    normalize on filtered signal — so norm stats reflect the filtered distribution.
-    """
-    raw_data_dir       = str(Path(raw_data_dir).resolve())
+    """Preprocess PTB-XL and persist split datasets and metadata."""
+    raw_data_dir = str(Path(raw_data_dir).resolve())
     processed_data_dir = Path(processed_data_dir).resolve()
     processed_data_dir.mkdir(parents=True, exist_ok=True)
 
     bandpass_sos = None
     if apply_bandpass:
-        bandpass_sos = butter(
-            N=filter_order,
-            Wn=[filter_low_hz, filter_high_hz],
-            btype="bandpass",
-            fs=sampling_rate,
-            output="sos",
+        bandpass_sos = build_bandpass_filter(
+            filter_low_hz,
+            filter_high_hz,
+            filter_order,
+            sampling_rate,
         )
         log.info(
             "Applying zero-phase bandpass filter: %.2f-%.2f Hz, order %d",
@@ -163,7 +156,6 @@ def run(
     else:
         log.info("Bandpass filtering disabled.")
 
-    # Load metadata
     log.info("Loading metadata...")
     df = pd.read_csv(
         os.path.join(raw_data_dir, "ptbxl_database.csv"),
@@ -171,7 +163,6 @@ def run(
     )
     scp_lookup = load_scp_lookup(os.path.join(raw_data_dir, "scp_statements.csv"))
 
-    # Derive labels 
     log.info("Deriving diagnostic superclass labels...")
     df["label_str"] = df["scp_codes"].apply(
         lambda x: derive_label(x, scp_lookup, likelihood_threshold)
@@ -186,7 +177,6 @@ def run(
     label_counts = df["label_str"].value_counts().to_dict()
     log.info("Label distribution: %s", label_counts)
 
-    # Assign splits
     split_mask: dict[str, pd.Series] = {
         split: df["strat_fold"].isin(folds)
         for split, folds in FOLD_SPLITS.items()
@@ -197,7 +187,6 @@ def run(
     for split, sdf in splits.items():
         log.info("Split '%s': %d records", split, len(sdf))
 
-    # Load waveforms and reports per split
     processed: dict[str, dict] = {}
     train_signals: list[np.ndarray] = []
 
@@ -215,16 +204,16 @@ def run(
             ecg_ids.append(ecg_id)
 
         processed[split] = {
-            "signals":  signals,
-            "reports":  reports,
-            "labels":   labels,
-            "ecg_ids":  ecg_ids,
+            "signals": signals,
+            "reports": reports,
+            "labels": labels,
+            "ecg_ids": ecg_ids,
         }
 
         if split == "train":
             train_signals = signals
 
-    # Normalization stats from training split only
+    # Fit normalization statistics on the training split only.
     log.info("Computing normalization statistics from training split...")
     norm_stats = compute_norm_stats(train_signals)
 
@@ -233,7 +222,6 @@ def run(
         json.dump(norm_stats, f, indent=2)
     log.info("Saved norm stats → %s", norm_stats_path)
 
-    # Apply normalization and save splits
     mean, std = norm_stats["mean"], norm_stats["std"]
 
     for split, data in processed.items():
@@ -242,11 +230,17 @@ def run(
 
         norm_signals = np.stack(
             [normalize(s, mean, std) for s in data["signals"]], axis=0
-        )  # [N, 1000, 12]
+        )
 
-        np.save(split_dir / "signals.npy",  norm_signals)
-        np.save(split_dir / "labels.npy",   np.array(data["labels"], dtype=np.int64))
-        np.save(split_dir / "ecg_ids.npy",  np.array(data["ecg_ids"], dtype=np.int64))
+        np.save(split_dir / "signals.npy", norm_signals)
+        np.save(
+            split_dir / "labels.npy",
+            np.array(data["labels"], dtype=np.int64),
+        )
+        np.save(
+            split_dir / "ecg_ids.npy",
+            np.array(data["ecg_ids"], dtype=np.int64),
+        )
 
         # Reports are saved as JSON to preserve Unicode text safely.
         with open(split_dir / "reports.json", "w", encoding="utf-8") as f:
@@ -254,15 +248,17 @@ def run(
 
         log.info(
             "Saved '%s' split: %d samples, signals shape %s",
-            split, len(data["labels"]), norm_signals.shape,
+            split,
+            len(data["labels"]),
+            norm_signals.shape,
         )
 
-    # Class weights (inverse frequency, training split only)
+    # Derive class weights from the training split only.
     train_labels = np.array(processed["train"]["labels"], dtype=np.int64)
     class_counts = np.bincount(train_labels, minlength=len(LABEL_MAP))
     class_weights = (class_counts.sum() / (len(LABEL_MAP) * class_counts)).tolist()
 
-    # Config snapshot
+    # Persist preprocessing parameters for reproducibility and inference.
     snapshot = {
         "likelihood_threshold": likelihood_threshold,
         "label_map": LABEL_MAP,
