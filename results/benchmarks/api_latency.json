@@ -1,0 +1,31 @@
+{
+  "scope": "api_end_to_end",
+  "protocol": {
+    "warmup_runs": 20,
+    "timed_runs": 200
+  },
+  "text_present": {
+    "latency": {
+      "p50_ms": 46.15756249404512,
+      "p95_ms": 50.23761869815642,
+      "mean_ms": 46.84389666188508,
+      "std_ms": 5.343192961417105
+    }
+  },
+  "text_absent": {
+    "latency": {
+      "p50_ms": 7.013187481788918,
+      "p95_ms": 7.353943711495957,
+      "mean_ms": 7.045172474172432,
+      "std_ms": 0.17342073755275972
+    }
+  },
+  "environment": {
+    "hardware": "arm",
+    "os": "Darwin 24.6.0",
+    "python_version": "3.11.12",
+    "torch_version": "2.11.0",
+    "onnx_version": "1.21.0",
+    "onnxruntime_version": "1.25.1"
+  }
+}

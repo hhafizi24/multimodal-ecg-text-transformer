@@ -1,6 +1,4 @@
-"""
-Benchmark inference latency, memory, and artifact size across model runtimes.
-"""
+"""Benchmark inference latency, memory, and artifact size across model runtimes and the served API."""
 
 import argparse
 import importlib.metadata
@@ -34,6 +32,15 @@ def load_sample(processed_dir: str, fusion_cache_dir: str, index: int = 0) -> tu
     )
     text_available = np.ones(1, dtype=bool)
     return signal, text_embedding, text_available
+
+
+def load_api_sample(processed_dir: str, index: int = 0) -> tuple:
+    signals = np.load(Path(processed_dir) / "signals.npy", mmap_mode="r")
+    with open(Path(processed_dir) / "reports.json", encoding="utf-8") as f:
+        reports = json.load(f)
+
+    signal = np.array(signals[index], dtype=np.float32).tolist()
+    return signal, reports[index]
 
 
 def summarize_latencies(times_ms: list) -> dict:
@@ -108,6 +115,24 @@ def benchmark_onnx(onnx_path, signal, text_embedding, text_available, warmup_run
     }
 
 
+def benchmark_api(api_url, signal, report_text, warmup_runs, timed_runs) -> dict:
+    import httpx
+
+    payload = {"signal": signal, "report_text": report_text}
+
+    with httpx.Client(timeout=30.0) as client:
+        for _ in range(warmup_runs):
+            client.post(api_url, json=payload).raise_for_status()
+
+        times_ms = []
+        for _ in range(timed_runs):
+            start = time.perf_counter()
+            client.post(api_url, json=payload).raise_for_status()
+            times_ms.append((time.perf_counter() - start) * 1000)
+
+    return {"latency": summarize_latencies(times_ms)}
+
+
 def get_environment_info() -> dict:
     return {
         "hardware": platform.processor() or platform.machine(),
@@ -180,18 +205,8 @@ def plot_benchmark_comparison(results: dict, output_path: str) -> None:
     x = list(range(len(backends)))
     width = 0.35
 
-    p50_bars = axes[0].bar(
-        [i - width / 2 for i in x],
-        p50,
-        width,
-        label="p50",
-    )
-    p95_bars = axes[0].bar(
-        [i + width / 2 for i in x],
-        p95,
-        width,
-        label="p95",
-    )
+    p50_bars = axes[0].bar([i - width / 2 for i in x], p50, width, label="p50")
+    p95_bars = axes[0].bar([i + width / 2 for i in x], p95, width, label="p95")
     axes[0].bar_label(p50_bars, fmt="%.2f", padding=3)
     axes[0].bar_label(p95_bars, fmt="%.2f", padding=3)
     axes[0].set_xticks(x)
@@ -252,30 +267,55 @@ def run_suite(args: argparse.Namespace) -> None:
     print(f"Saved comparison figure → {args.figure_path}")
 
 
+def run_api_benchmark(args: argparse.Namespace) -> None:
+    signal, report_text = load_api_sample(args.processed_dir)
+
+    summary = {
+        "scope": "api_end_to_end",
+        "protocol": {
+            "warmup_runs": args.warmup_runs,
+            "timed_runs": args.timed_runs,
+        },
+        "text_present": benchmark_api(args.api_url, signal, report_text, args.warmup_runs, args.timed_runs),
+        "text_absent": benchmark_api(args.api_url, signal, None, args.warmup_runs, args.timed_runs),
+        "environment": get_environment_info(),
+    }
+
+    output_path = Path(args.output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as f:
+        json.dump(summary, f, indent=2)
+    print(f"Saved API benchmark results → {output_path}")
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--backend", choices=["pytorch", "onnx_fp32", "onnx_int8"])
+    parser.add_argument("--backend", choices=["pytorch", "onnx_fp32", "onnx_int8", "api"])
     parser.add_argument("--processed-dir", required=True)
-    parser.add_argument("--fusion-cache-dir", required=True)
+    parser.add_argument("--fusion-cache-dir")
     parser.add_argument("--checkpoint-path")
     parser.add_argument("--fp32-path")
     parser.add_argument("--int8-path")
+    parser.add_argument("--api-url", default=BenchmarkConfig.api_url)
     parser.add_argument("--warmup-runs", type=int, default=BenchmarkConfig.n_warmup_runs)
     parser.add_argument("--timed-runs", type=int, default=BenchmarkConfig.n_benchmark_runs)
     parser.add_argument("--num-threads", type=int, default=1)
-    parser.add_argument(
-        "--output-path",
-        default="results/benchmarks/apple_arm.json",
-    )
-    parser.add_argument(
-        "--figure-path",
-        default="results/figures/benchmarks/benchmark_comparison.png",
-    )
+    parser.add_argument("--output-path", default="results/benchmarks/apple_arm.json")
+    parser.add_argument("--figure-path", default="results/figures/benchmarks/benchmark_comparison.png")
     args = parser.parse_args()
 
     if args.backend is None:
+        if args.fusion_cache_dir is None:
+            parser.error("--fusion-cache-dir is required to run the full suite.")
         run_suite(args)
         return
+
+    if args.backend == "api":
+        run_api_benchmark(args)
+        return
+
+    if args.fusion_cache_dir is None:
+        parser.error("--fusion-cache-dir is required for the pytorch and onnx backends.")
 
     signal, text_embedding, text_available = load_sample(args.processed_dir, args.fusion_cache_dir)
 
