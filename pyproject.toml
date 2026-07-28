@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "multimodal-ecg-text-transformer"
 version = "0.1.0"
-description = "Multimodal transformer fusing 12-lead ECG waveforms with cardiologist report text for diagnostic classification"
+description = "Multimodal transformer fusing 12-lead ECG waveforms with clinical report text for diagnostic classification"
 readme = "README.md"
 requires-python = ">=3.10"
 

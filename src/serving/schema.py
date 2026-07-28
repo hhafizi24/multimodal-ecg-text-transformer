@@ -45,7 +45,7 @@ class PredictRequest(BaseModel):
     report_text: str | None = Field(
         default=None,
         description=(
-            "Optional German-language cardiologist report. Omit or provide "
+            "Optional German-language clinical report. Omit or provide "
             "null or blank text to run signal-only inference."
         ),
     )
