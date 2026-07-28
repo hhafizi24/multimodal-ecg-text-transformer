@@ -1,0 +1,72 @@
+model_cfg:
+  _target_: configs.config.ModelConfig
+  mode: text_only
+  cnn_channels:
+  - 32
+  - 64
+  - 128
+  cnn_kernel_size: 7
+  cnn_kernel_sizes: null
+  cnn_activation: gelu
+  cnn_pooling: none
+  cnn_dropout: 0.0
+  cnn_stem: sequential
+  multiscale_branch_channels:
+  - 64
+  - 64
+  - 64
+  multiscale_kernel_sizes:
+  - 11
+  - 21
+  - 41
+  dwsep_channels:
+  - 64
+  - 64
+  - 128
+  - 128
+  dwsep_kernel_sizes: null
+  se_reduction_ratio: 8
+  transformer_hidden_dim: 256
+  transformer_num_heads: 8
+  transformer_num_layers: 3
+  transformer_dropout: 0.1
+  text_model_name: GerMedBERT/medbert-512
+  text_projection_dim: 256
+  use_lora: true
+  lora_r: 4
+  lora_alpha: 16
+  lora_dropout: 0.05
+  lora_target_modules:
+  - query
+  - value
+  fusion_num_heads: 8
+  freeze_encoders: false
+  text_modality_dropout_p: 0.0
+  classifier_hidden_dim: 256
+  classifier_activation: gelu
+  classifier_dropout: 0.3
+  num_classes: 5
+data_cfg:
+  _target_: configs.config.DataConfig
+  processed_data_dir: data/processed
+  norm_stats_path: data/processed/norm_stats.json
+  batch_size: 64
+  num_workers: 2
+  max_text_length: 128
+train_cfg:
+  _target_: configs.config.TrainingConfig
+  learning_rate: 0.0003
+  num_epochs: 20
+  weight_decay: 0.0001
+  scheduler: cosine
+  checkpoint_dir: models
+  experiment_name: text_only
+  run_name: null
+  use_class_weights: true
+  class_weights_path: data/processed/config_snapshot.json
+  early_stopping_patience: 5
+  loss_fn: cross_entropy
+  label_smoothing: 0.0
+  focal_gamma: 2.0
+  seed: 42
+device: auto
