@@ -119,7 +119,6 @@ def train(
 
     mlflow.set_experiment(train_cfg.experiment_name)
     with mlflow.start_run(run_name=train_cfg.run_name):
-        # Log configuration and data settings
         aug = getattr(train_loader.dataset, "augmentation", None)
 
         params = {
@@ -150,6 +149,7 @@ def train(
             for batch in train_loader:
                 labels = batch["label"].to(device)
 
+                # Handle fully cached fusion, cached-text, and raw multimodal batches
                 if "signal_embedding" in batch:
                     signal, input_ids, attention_mask, cached_embedding = None, None, None, None
                     signal_embedding = batch["signal_embedding"].to(device)
@@ -181,7 +181,6 @@ def train(
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
 
-                # Clip trainable gradients
                 nn.utils.clip_grad_norm_(
                     filter(lambda p: p.requires_grad, model.parameters()), max_norm=1.0
                 )
@@ -220,7 +219,7 @@ def train(
                 },
                 step=epoch,
             )
-            # Save the best checkpoint by validation macro F1
+
             if val_metrics["macro_f1"] > best_val_f1:
                 best_val_f1 = val_metrics["macro_f1"]
                 best_val_auc = val_metrics["macro_auc"]
@@ -263,13 +262,14 @@ def train(
                     )
                     break
 
-        mlflow.log_metric("best_epoch", best_epoch)           
+        mlflow.log_metric("best_epoch", best_epoch)
         mlflow.log_artifact(str(best_ckpt_path), artifact_path="checkpoints")
         log.info(
-                "Training complete. Best val macro F1: %.4f | best val macro AUC: %.4f at epoch %d", 
-                 best_val_f1,
-                 best_val_auc,
-                 best_epoch,
+            "Training complete. Best val macro F1: %.4f | "
+            "best val macro AUC: %.4f at epoch %d",
+            best_val_f1,
+            best_val_auc,
+            best_epoch,
         )
 
     return best_ckpt_path
