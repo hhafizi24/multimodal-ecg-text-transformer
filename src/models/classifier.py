@@ -1,8 +1,5 @@
 """
-Classification head for unimodal and fused embeddings.
-
-Uses a linear output layer by default or a one-hidden-layer MLP when
-classifier_hidden_dim is configured.
+Configurable classification head for unimodal and fused embeddings.
 """
 
 import torch
@@ -19,12 +16,6 @@ _ACTIVATIONS = {
 
 class ClassificationHead(nn.Module):
     def __init__(self, cfg):
-        """
-        Args:
-            cfg: ModelConfig. Relevant fields:
-                transformer_hidden_dim, classifier_hidden_dim,
-                classifier_activation, classifier_dropout, num_classes.
-        """
         super().__init__()
 
         if cfg.classifier_hidden_dim is None:
@@ -46,10 +37,6 @@ class ClassificationHead(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Args:
-            x: [batch, hidden_dim]
-
-        Returns:
-            logits: [batch, num_classes]
+        Map embeddings to class logits.
         """
         return self.net(x)

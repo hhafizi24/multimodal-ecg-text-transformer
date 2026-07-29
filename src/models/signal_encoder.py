@@ -1,9 +1,5 @@
 """
-Signal encoder: CNN stem followed by a transformer encoder.
-
-The CNN reduces the input sequence before projecting it to
-`transformer_hidden_dim`. A transformer encoder contextualizes the resulting
-token sequence, and mean pooling produces a fixed-length signal embedding.
+CNN-Transformer encoder for fixed-length ECG signal embeddings.
 """
 
 import torch
@@ -22,25 +18,18 @@ _ACTIVATIONS = {
 
 class SignalEncoder(nn.Module):
     """
-    Encodes ECG signals into fixed-length embeddings using a configurable CNN
-    stem followed by a transformer encoder.
+    Encode ECG signals with a configurable CNN stem and Transformer encoder.
     """
 
     def __init__(self, cfg):
-        """
-        Args:
-            cfg: Model configuration controlling the CNN stem and transformer encoder.
-        """
         super().__init__()
 
         activation_cls = _ACTIVATIONS[cfg.cnn_activation]
 
-        # Build the configured CNN stem. All stem implementations produce feature
-        # sequences that are projected into the shared transformer embedding space.
         if cfg.cnn_stem == "multiscale":
             self.cnn = MultiScaleStem(cfg)
             cnn_out_channels = self.cnn.out_channels
-        
+
         elif cfg.cnn_stem == "depthwise_se":
             self.cnn = DepthwiseSeparableSEStem(cfg)
             cnn_out_channels = self.cnn.out_channels
@@ -72,9 +61,7 @@ class SignalEncoder(nn.Module):
             in_channels = 12
             cnn_layers = []
 
-            # If pooling is enabled, convolution extracts features before
-            # downsampling. Otherwise, stride-2 convolution preserves the
-            # original baseline behavior.
+            # Use stride-2 convolutions when pooling is disabled to keep downsampling consistent
             for out_ch, kernel_size in zip(cfg.cnn_channels, kernel_sizes):
                 block = [
                     nn.Conv1d(
@@ -100,12 +87,11 @@ class SignalEncoder(nn.Module):
 
         else:
             raise ValueError(f"Unknown cnn_stem: {cfg.cnn_stem!r}")
-        
+
         self.cnn_dropout = nn.Dropout(p=cfg.cnn_dropout)
         self.input_proj = nn.Linear(cnn_out_channels, cfg.transformer_hidden_dim)
 
-        # Positional embedding table sized with headroom above the sequence
-        # lengths produced by either CNN stem.
+        # Leave room for the longest sequence produced by any supported CNN stem
         self.pos_embedding = nn.Embedding(200, cfg.transformer_hidden_dim)
         self.pos_drop = nn.Dropout(p=cfg.transformer_dropout)
 
@@ -125,13 +111,7 @@ class SignalEncoder(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Encode an ECG recording into a fixed-length embedding.
-
-        Args:
-            x: Input tensor of shape [batch, time, channels].
-
-        Returns:
-            Signal embedding of shape [batch, transformer_hidden_dim].
+        Map ECG tensors from [batch, time, channels] to [batch, hidden_dim].
         """
         x = x.permute(0, 2, 1)           # [B, 12, 1000]
         x = self.cnn(x)                  # [B, C, ~125]
@@ -145,6 +125,4 @@ class SignalEncoder(nn.Module):
 
         x = self.transformer(x)
 
-        # Mean pooling over the sequence dimension produces a single embedding
-        # per ECG recording.
         return x.mean(dim=1)

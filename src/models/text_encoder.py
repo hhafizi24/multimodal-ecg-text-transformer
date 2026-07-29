@@ -1,9 +1,5 @@
 """
-Text encoder consisting of a MedBERT.de backbone and a trainable projection
-head with optional LoRA adaptation.
-
-The backbone's CLS representation is projected into the shared embedding
-space used by the classifier and fusion module.
+MedBERT text encoder with optional LoRA adaptation and shared-space projection.
 """
 
 import torch
@@ -13,8 +9,10 @@ from transformers import AutoModel
 
 
 class TextEncoder(nn.Module):
-    """Encode clinical text with a frozen or LoRA-adapted MedBERT.de backbone."""
-    
+    """
+    Encode clinical text with a frozen or LoRA-adapted MedBERT.de backbone.
+    """
+
     def __init__(self, cfg):
         super().__init__()
 
@@ -37,13 +35,12 @@ class TextEncoder(nn.Module):
                 param.requires_grad = False
             self.text_model.eval()
 
-        # Project the CLS representation into the shared embedding space
         self.projection = nn.Linear(hidden_size, cfg.text_projection_dim)
 
     def train(self, mode: bool = True):
         super().train(mode)
 
-        # Keep dropout disabled when the backbone is fully frozen.
+        # Keep the frozen backbone in evaluation mode so dropout stays disabled
         if not self.use_lora:
             self.text_model.eval()
         return self
@@ -76,16 +73,17 @@ class TextEncoder(nn.Module):
         cached_embedding: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
-        Project either tokenized text or a cached backbone representation.
+        Project tokenized reports or cached text features into the shared
+        embedding space.
 
         Args:
-            input_ids: Token IDs with shape [batch, seq_len].
-            attention_mask: Attention mask with shape [batch, seq_len].
-            cached_embedding: Precomputed CLS features with shape
-                [batch, hidden_size].
+            input_ids: Tokenized report IDs.
+            attention_mask: Token mask for the text backbone.
+            cached_embedding: Precomputed CLS features, supported only when
+                LoRA is disabled.
 
         Returns:
-            Projected text features with shape [batch, text_projection_dim].
+            Projected text embeddings with shape [batch, projection_dim].
         """
         if cached_embedding is not None:
             if self.use_lora:

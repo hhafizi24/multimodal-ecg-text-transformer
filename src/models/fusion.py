@@ -1,8 +1,5 @@
 """
-Cross-attention fusion for pooled signal and text embeddings.
-
-The signal embedding attends over the signal-text pair, with optional
-text masking for modality-dropout training and deterministic ablation.
+Cross-attention fusion with optional text masking for dropout and ablation.
 """
 
 import torch
@@ -31,13 +28,14 @@ class CrossAttentionFusion(nn.Module):
         text_available: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
-        Fuse signal and text embeddings.
+        Fuse signal and text embeddings with optional per-sample text masking.
 
         Args:
-            signal_emb:     Signal embeddings with shape [batch, hidden_dim].
-            text_emb:       Text embeddings with shape [batch, hidden_dim].
-            text_available: Boolean mask indicating available text inputs.
-                             
+            signal_emb: Signal features with shape [batch, hidden_dim].
+            text_emb: Text features with shape [batch, hidden_dim].
+            text_available: Boolean mask identifying samples with available
+                report text.
+
         Returns:
             Fused embeddings with shape [batch, hidden_dim].
         """
@@ -45,6 +43,7 @@ class CrossAttentionFusion(nn.Module):
         query = signal_emb.unsqueeze(1)
         kv = torch.stack([signal_emb, text_emb], dim=1)  # [B, 2, hidden_dim]
 
+        # Use the provided availability mask instead of random dropout when one is supplied
         if text_available is not None:
             drop_text = ~text_available.to(
                 device=signal_emb.device,

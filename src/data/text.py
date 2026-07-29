@@ -1,9 +1,5 @@
 """
-Tokenization helpers for the clinical report text branch.
-
-Wraps the MedBERT.de tokenizer with project-specific defaults. The tokenizer
-is loaded once at the call site and reused — don't instantiate it inside the
-Dataset __getitem__.
+Tokenization utilities for German clinical report text.
 """
 
 from transformers import AutoTokenizer
@@ -19,10 +15,7 @@ def tokenize(
     max_length: int = 128,
 ) -> dict:
     """
-    Tokenize a batch of report strings.
-
-    Returns a dict with 'input_ids' and 'attention_mask' as PyTorch tensors,
-    truncated and padded to max_length.
+    Tokenize and pad report text to fixed-length PyTorch tensors.
     """
     return tokenizer(
         texts,

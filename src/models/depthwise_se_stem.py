@@ -1,9 +1,5 @@
 """
-Depthwise-separable CNN stem with per-block squeeze-and-excitation.
-
-Each block applies a depthwise temporal convolution, a pointwise channel-mixing
-convolution, batch normalization, activation, squeeze-and-excitation gating,
-and optional pooling.
+Depthwise-separable 1D CNN stem with squeeze-and-excitation gating.
 """
 
 import torch
@@ -19,9 +15,7 @@ _ACTIVATIONS = {
 
 class SEBlock1d(nn.Module):
     """
-    Squeeze-and-excitation block for 1D feature maps.
-
-    Uses global average pooling over time to produce a channel-wise gate.
+    Apply channel-wise squeeze-and-excitation gating to 1D feature maps.
     """
 
     def __init__(self, channels: int, reduction_ratio: int, activation_cls):
@@ -43,10 +37,7 @@ class SEBlock1d(nn.Module):
 
 class DepthwiseSeparableBlock1d(nn.Module):
     """
-    Depthwise-separable convolution block with squeeze-and-excitation.
-
-    Applies depthwise convolution, pointwise projection, normalization,
-    activation, SE gating, and optional pooling.
+    Depthwise-separable convolution block with SE gating and optional pooling.
     """
 
     def __init__(
@@ -62,7 +53,8 @@ class DepthwiseSeparableBlock1d(nn.Module):
 
         if kernel_size % 2 == 0:
             raise ValueError(f"kernel_size must be odd, got {kernel_size}.")
-        
+
+        # Use stride-2 convolutions when pooling is disabled to keep downsampling consistent
         conv_stride = 1 if pool_cls is not None else 2
 
         self.depthwise = nn.Conv1d(
@@ -93,10 +85,7 @@ class DepthwiseSeparableBlock1d(nn.Module):
 
 class DepthwiseSeparableSEStem(nn.Module):
     """
-    CNN stem composed of stacked depthwise-separable SE blocks.
-
-    The stem expects 12-channel ECG input and produces a feature sequence for the
-    transformer encoder.
+    Stack depthwise-separable SE blocks for 12-lead ECG encoding.
     """
 
     def __init__(self, cfg):

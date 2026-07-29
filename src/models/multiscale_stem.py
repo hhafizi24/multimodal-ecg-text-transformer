@@ -1,12 +1,5 @@
 """
-Multi-scale CNN stem for ECG signal encoding.
-
-Runs parallel 1D convolution branches with different kernel sizes, then
-concatenates their outputs along the channel dimension. Smaller kernels capture
-sharper waveform features, while wider kernels capture slower morphology.
-
-Each branch applies Conv1d, batch normalization, an activation function, and
-three stages of average pooling before concatenation.
+Parallel multi-scale 1D CNN stem with channel-wise feature concatenation.
 """
 
 import torch
@@ -21,7 +14,9 @@ _ACTIVATIONS = {
 
 
 class _Branch(nn.Module):
-    """Single branch of the multi-scale CNN stem."""
+    """
+    Single branch of the multi-scale CNN stem.
+    """
 
     def __init__(
         self,
@@ -35,8 +30,7 @@ class _Branch(nn.Module):
         if kernel_size % 2 == 0:
             raise ValueError(f"Kernel size must be odd, got {kernel_size}.")
 
-        # Mirror the downsampling performed by the sequential CNN stem so both
-        # architectures produce sequences of comparable length.
+        # Match the sequential stem's downsampling so output lengths stay similar
         self.net = nn.Sequential(
             nn.Conv1d(
                 in_channels,
@@ -54,21 +48,12 @@ class _Branch(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Encode one scale of the input signal."""
         return self.net(x)
 
 
 class MultiScaleStem(nn.Module):
     """
-    Parallel multi-scale CNN stem.
-
-    Processes the input ECG using multiple convolution branches with different
-    kernel sizes. The branch outputs are concatenated along the channel dimension
-    to produce a shared feature representation for the signal encoder.
-
-    Args:
-        cfg: Model configuration containing the multiscale stem parameters.
-        in_channels: Number of ECG input channels.
+    Concatenate parallel convolution branches with different temporal kernels.
     """
 
     def __init__(self, cfg, in_channels: int = 12):
@@ -100,23 +85,15 @@ class MultiScaleStem(nn.Module):
             ]
         )
 
-        # Total channel dimension after concatenating all branches.
         self.out_channels = sum(branch_channels)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Apply all convolution branches and concatenate their outputs.
-
-        Args:
-            x: Input tensor of shape [batch, channels, time].
-
-        Returns:
-            Tensor of shape [batch, sum(branch_channels), sequence_length].
+        Concatenate branch features along the channel dimension.
         """
         outputs = [branch(x) for branch in self.branches]
 
-        # Branch outputs that differ by one timestep. Trim all 
-        # branches to the shortest length before concatenation.
+        # Trim branch outputs to the shortest length before concatenating
         min_len = min(out.size(-1) for out in outputs)
         outputs = [out[..., :min_len] for out in outputs]
 

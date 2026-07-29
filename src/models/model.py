@@ -1,9 +1,5 @@
 """
-Unified multimodal ECG classifier.
-
-A single model class covering all three experimental stages. Active
-components are controlled by cfg.mode, and unused branches are not
-instantiated for a given configuration.
+Unified classifier for signal-only, text-only, and fused ECG inputs.
 """
 
 import torch
@@ -16,14 +12,11 @@ from src.models.text_encoder import TextEncoder
 
 
 class MultimodalECGClassifier(nn.Module):
+    """
+    Configure signal-only, text-only, or cross-attention fusion classification.
+    """
+
     def __init__(self, cfg):
-        """
-        Args:
-            cfg: ModelConfig. cfg.mode controls which branches are active:
-                "signal_only" — ECG encoder + classifier
-                "text_only"   — text encoder + classifier
-                "fusion"      — both encoders + cross-attention + classifier
-        """
         super().__init__()
 
         self.mode = cfg.mode
@@ -43,7 +36,6 @@ class MultimodalECGClassifier(nn.Module):
 
         self.classifier = ClassificationHead(cfg)
 
-        # Freeze pretrained encoders during fusion training
         self.freeze_encoders = cfg.freeze_encoders
         if self.freeze_encoders:
             if hasattr(self, "signal_encoder"):
@@ -54,6 +46,9 @@ class MultimodalECGClassifier(nn.Module):
                     p.requires_grad = False
 
     def train(self, mode: bool = True):
+        """
+        Set training mode while keeping frozen encoders in evaluation mode.
+        """
         super().train(mode)
         if self.freeze_encoders:
             if hasattr(self, "signal_encoder"):
@@ -73,16 +68,24 @@ class MultimodalECGClassifier(nn.Module):
         text_available: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
+        Return class logits from raw inputs or precomputed embeddings.
+
         Args:
-            signal:           [batch, 1000, 12]
-            input_ids:        [batch, seq_len]
-            attention_mask:   [batch, seq_len]
-            cached_embedding: [batch, hidden_size], bypasses the text backbone
-            signal_embedding: [batch, hidden_dim], bypasses the signal encoder
-            text_embedding:   [batch, hidden_dim], bypasses the text encoder
-            text_available:   [batch] bool, forces deterministic text ablation
+            signal: Raw ECG tensor with shape [batch, samples, leads].
+            input_ids: Tokenized report IDs.
+            attention_mask: Token mask for the report encoder.
+            cached_embedding: Cached text-backbone features for text-only
+                inference.
+            signal_embedding: Precomputed signal features for fusion.
+            text_embedding: Precomputed text features for fusion.
+            text_available: Per-sample mask indicating whether report text is
+                available.
+
         Returns:
-            logits: [batch, num_classes]
+            Class logits with shape [batch, num_classes].
+
+        Notes:
+            Fusion embeddings must be supplied together.
         """
         if self.mode == "fusion" and (
             (signal_embedding is None) != (text_embedding is None)
@@ -90,14 +93,14 @@ class MultimodalECGClassifier(nn.Module):
             raise ValueError(
                 "signal_embedding and text_embedding must be provided together."
             )
-        
+
         if self.mode == "signal_only":
             emb = signal_embedding if signal_embedding is not None else self.signal_encoder(signal)
 
         elif self.mode == "text_only":
             emb = text_embedding if text_embedding is not None else self.text_encoder(input_ids, attention_mask, cached_embedding)
 
-        else:  # fusion
+        else:
             sig_emb = signal_embedding if signal_embedding is not None else self.signal_encoder(signal)
             txt_emb = text_embedding if text_embedding is not None else self.text_encoder(input_ids, attention_mask, cached_embedding)
             emb = self.fusion(

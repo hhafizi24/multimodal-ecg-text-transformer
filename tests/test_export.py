@@ -1,9 +1,7 @@
 """
-ONNX export smoke test.
+ONNX export tests for the signal encoder, fusion module, and classifier.
 
-Validates that the ONNX-exportable portion of the model (signal encoder,
-fusion module, and classifier) exports cleanly and produces correct outputs.
-MedBERT.de is excluded because it runs outside the ONNX graph in deployment.
+The live text encoder remains outside the exported graph.
 """
 
 import tempfile
@@ -21,14 +19,13 @@ from src.models.fusion import CrossAttentionFusion
 from src.models.signal_encoder import SignalEncoder
 from onnxruntime.quantization import QuantType, quantize_dynamic
 
-HIDDEN_DIM  = 64   # small for speed — testing exportability, not accuracy
+HIDDEN_DIM = 64  # Keep export tests fast
 NUM_CLASSES = 5
-OPSET       = 14
+OPSET = 14
 
 
 def make_small_cfg() -> ModelConfig:
-    # text_model_name and text_projection_dim are present in ModelConfig but
-    # unused here — we never instantiate TextEncoder in these tests.
+    # ModelConfig requires text settings even though these tests do not build the text encoder
     return ModelConfig(
         mode="fusion",
         cnn_channels=[8, 16, 32],
@@ -51,10 +48,7 @@ def make_small_cfg() -> ModelConfig:
 
 class _ExportableModel(nn.Module):
     """
-    Lightweight test stand-in for ExportableECGModel.
-
-    Assembles signal encoder + fusion + classifier directly without
-    touching MultimodalECGClassifier or the text encoder.
+    Minimal signal-fusion-classifier graph used for export tests.
     """
 
     def __init__(self, cfg: ModelConfig):
@@ -77,6 +71,7 @@ def _export_to_tempfile(
     tmpdir: str,
 ) -> str:
     onnx_path = str(Path(tmpdir) / "model.onnx")
+    # Use the legacy exporter because it preserves dynamic batch support for this CNN stem
     torch.onnx.export(
         model,
         (signal, text_embedding, text_available),
@@ -96,7 +91,6 @@ def _export_to_tempfile(
 
 
 def test_onnx_export_and_inference():
-    """Export succeeds, graph passes ONNX validation, output shape is correct."""
     model = _ExportableModel(make_small_cfg())
     model.eval()
 
@@ -124,7 +118,6 @@ def test_onnx_export_and_inference():
 
 
 def test_onnx_output_matches_pytorch():
-    """ONNX Runtime output must agree with PyTorch within numerical tolerance."""
     model = _ExportableModel(make_small_cfg())
     model.eval()
 
@@ -152,7 +145,6 @@ def test_onnx_output_matches_pytorch():
 
 
 def test_onnx_dynamic_batch():
-    """Export with batch=1, run inference with batch=4 to verify dynamic axis."""
     model = _ExportableModel(make_small_cfg())
     model.eval()
 
@@ -179,7 +171,6 @@ def test_onnx_dynamic_batch():
 
 
 def test_onnx_text_availability_patterns():
-    """ONNX inference supports present, absent, and mixed text inputs."""
     model = _ExportableModel(make_small_cfg())
     model.eval()
 
@@ -235,7 +226,6 @@ def test_onnx_text_availability_patterns():
 
 
 def test_quantized_onnx_inference():
-    """The dynamically quantized model loads and produces finite logits."""
     model = _ExportableModel(make_small_cfg())
     model.eval()
 
