@@ -91,6 +91,15 @@ dominant class are excluded.
 | CD | Conduction disturbance |
 | HYP | Hypertrophy |
 
+### Dataset citations
+
+This project uses PTB-XL through PhysioNet and acknowledges the following sources:
+
+- Wagner, P., Strodthoff, N., Bousseljot, R., Samek, W., & Schaeffter, T. (2022). *PTB-XL, a large publicly available electrocardiography dataset* (version 1.0.3). PhysioNet. https://doi.org/10.13026/kfzx-aw45
+- Wagner, P., Strodthoff, N., Bousseljot, R.-D., Kreiseler, D., Lunze, F. I., Samek, W., & Schaeffter, T. (2020). *PTB-XL: A large publicly available ECG dataset*. Scientific Data. https://doi.org/10.1038/s41597-020-0495-6
+- Pollard, T., et al. (2026). *PhysioNet as a global platform for biomedical research*. Nature Health. https://doi.org/10.1038/s44360-026-00096-z
+- Goldberger, A. L., et al. (2000). *PhysioBank, PhysioToolkit, and PhysioNet: Components of a new research resource for complex physiologic signals*. Circulation, 101(23), e215–e220.
+
 ## Preprocessing
 
 | Step | Implementation |
