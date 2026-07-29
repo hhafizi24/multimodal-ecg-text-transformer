@@ -11,18 +11,13 @@ clinical report text for five-class, report-informed classification on PTB-XL.
 
 ## Overview
 
-This project evaluates whether ECG waveforms and clinical report text provide
-complementary information for cardiac classification. Three model variants
-isolate the contribution of each modality and their combination:
+This project evaluates whether ECG waveforms and clinical report text provide complementary information for five-class cardiac diagnostic classification. Three model variants isolate the contribution of each modality and their combination:
 
 - **Stage A:** ECG signal only (CNN stem + Transformer encoder)
 - **Stage B:** Clinical report text only (LoRA-adapted GerMedBERT encoder)
 - **Stage C:** Late fusion of both modalities via cross-attention
 
-The selected fusion model is exported to ONNX and served through FastAPI with
-optional report text. The repository also includes Hydra-Zen training presets,
-MLflow experiment tracking, runtime benchmarks, Docker packaging, and GitHub
-Actions CI.
+The selected fusion model is exported to ONNX and served through FastAPI with optional report text. The repository also includes Hydra-Zen training presets, MLflow experiment tracking, runtime benchmarks, Docker packaging, and GitHub Actions CI.
 
 ## Architecture
 
